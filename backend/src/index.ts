@@ -53,12 +53,17 @@ app.post('/webhook/:salonId', async (req, res) => {
 app.use('/api', apiRoutes);
 
 async function main() {
-  await botManager.initAllBots();
-  startReminderJobs();
-
-  app.listen(PORT, () => {
+  app.listen(Number(PORT), '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
   });
+
+  startReminderJobs();
+
+  try {
+    await botManager.initAllBots();
+  } catch (err) {
+    console.error('Bot initialization failed:', err);
+  }
 }
 
 main().catch(console.error);
