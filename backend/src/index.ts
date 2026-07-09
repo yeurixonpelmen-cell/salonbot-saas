@@ -28,6 +28,10 @@ app.use(
 
 app.use(express.json());
 
+app.get('/', (_req, res) => {
+  res.json({ status: 'ok' });
+});
+
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
@@ -53,6 +57,9 @@ app.post('/webhook/:salonId', async (req, res) => {
 app.use('/api', apiRoutes);
 
 async function main() {
+  console.log('Starting SalonBot backend...');
+  console.log('PORT:', PORT);
+
   app.listen(Number(PORT), '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
   });
