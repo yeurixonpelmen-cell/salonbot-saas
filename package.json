@@ -1,0 +1,17 @@
+{
+  "name": "salonbot-saas",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "mini-app",
+    "admin"
+  ],
+  "scripts": {
+    "dev:backend": "npm --workspace backend run dev",
+    "dev:mini-app": "npm --workspace mini-app run dev",
+    "dev:admin": "npm --workspace admin run dev",
+    "build": "npm --workspace backend run build && npm --workspace mini-app run build && npm --workspace admin run build",
+    "typecheck": "npm --workspace backend run typecheck && npm --workspace mini-app run build && npm --workspace admin run build"
+  }
+}

@@ -1,0 +1,285 @@
+import { FormEvent, ReactNode, useEffect, useState } from 'react';
+import { api, Master, MasterPayload, ScheduleRow } from '../api';
+
+const DAYS = [
+  { id: 1, label: 'Пн' },
+  { id: 2, label: 'Вт' },
+  { id: 3, label: 'Ср' },
+  { id: 4, label: 'Чт' },
+  { id: 5, label: 'Пт' },
+  { id: 6, label: 'Сб' },
+  { id: 7, label: 'Нд' },
+];
+
+type MasterDraft = MasterPayload & { id?: string };
+
+export function MastersPage() {
+  const [masters, setMasters] = useState<Master[]>([]);
+  const [draft, setDraft] = useState<MasterDraft | null>(null);
+  const [scheduleMaster, setScheduleMaster] = useState<Master | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function load() {
+    setLoading(true);
+    setError('');
+    try {
+      setMasters(await api.get<Master[]>('/api/admin/masters'));
+    } catch (err) {
+      setError((err as { error?: string }).error ?? 'Не вдалось завантажити майстрів');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function remove(master: Master) {
+    if (!confirm(`Видалити майстра ${master.name}?`)) return;
+    await api.delete(`/api/admin/masters/${master.id}`);
+    await load();
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Майстри</h1>
+          <p className="text-sm text-gray-500">Команда салону і робочий графік</p>
+        </div>
+        <button
+          className="px-4 py-2 rounded-lg bg-blue-600 text-white"
+          onClick={() => setDraft({ name: '', position: '', photo_url: '', is_active: true })}
+        >
+          + Додати
+        </button>
+      </div>
+
+      {error && <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-red-800">{error}</div>}
+      {loading && <div className="rounded-xl bg-white border p-3 text-gray-500">Завантаження...</div>}
+
+      <div className="grid gap-3">
+        {masters.map((master) => (
+          <div key={master.id} className="bg-white border rounded-2xl p-4 flex gap-4 items-center">
+            {master.photo_url ? (
+              <img src={master.photo_url} alt="" className="w-16 h-16 rounded-xl object-cover" />
+            ) : (
+              <div className="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center text-2xl">👤</div>
+            )}
+            <div className="flex-1">
+              <div className="font-semibold">{master.name}</div>
+              <div className="text-sm text-gray-500">{master.position || 'Посада не вказана'}</div>
+              <div className="text-sm mt-1">{master.is_active ? '✅ Активний' : '⛔ Неактивний'}</div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button className="px-3 py-2 rounded-lg border" onClick={() => setScheduleMaster(master)}>
+                Розклад
+              </button>
+              <button className="px-3 py-2 rounded-lg border" onClick={() => setDraft(master)}>
+                Змінити
+              </button>
+              <button className="px-3 py-2 rounded-lg border text-red-600" onClick={() => remove(master)}>
+                Видалити
+              </button>
+            </div>
+          </div>
+        ))}
+        {!masters.length && !loading && (
+          <div className="bg-white border rounded-2xl p-6 text-gray-500">Поки немає майстрів.</div>
+        )}
+      </div>
+
+      {draft && (
+        <MasterForm
+          draft={draft}
+          onClose={() => setDraft(null)}
+          onSaved={async () => {
+            setDraft(null);
+            await load();
+          }}
+        />
+      )}
+
+      {scheduleMaster && (
+        <ScheduleEditor
+          master={scheduleMaster}
+          onClose={() => setScheduleMaster(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function MasterForm({
+  draft,
+  onClose,
+  onSaved,
+}: {
+  draft: MasterDraft;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [form, setForm] = useState<MasterDraft>(draft);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      const payload: MasterPayload = {
+        name: form.name,
+        position: form.position || null,
+        photo_url: form.photo_url || null,
+        is_active: form.is_active,
+      };
+      if (form.id) await api.patch(`/api/admin/masters/${form.id}`, payload);
+      else await api.post('/api/admin/masters', payload);
+      await onSaved();
+    } catch (err) {
+      setError((err as { error?: string }).error ?? 'Не вдалось зберегти майстра');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal title={form.id ? 'Змінити майстра' : 'Новий майстер'} onClose={onClose}>
+      <form onSubmit={submit} className="space-y-3">
+        {error && <div className="rounded-lg bg-red-50 border border-red-200 p-2 text-red-800 text-sm">{error}</div>}
+        <Input label="Ім'я *" value={form.name} onChange={(name) => setForm({ ...form, name })} required />
+        <Input label="Посада" value={form.position ?? ''} onChange={(position) => setForm({ ...form, position })} />
+        <Input label="Фото URL" value={form.photo_url ?? ''} onChange={(photo_url) => setForm({ ...form, photo_url })} />
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={form.is_active ?? true}
+            onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+          />
+          Активний
+        </label>
+        <button disabled={saving} className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium">
+          {saving ? 'Збереження...' : 'Зберегти'}
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
+function ScheduleEditor({ master, onClose }: { master: Master; onClose: () => void }) {
+  const [rows, setRows] = useState<Record<number, ScheduleRow>>({});
+  const [enabled, setEnabled] = useState<Record<number, boolean>>({});
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.get<ScheduleRow[]>(`/api/admin/masters/${master.id}/schedule`).then((data) => {
+      const nextRows: Record<number, ScheduleRow> = {};
+      const nextEnabled: Record<number, boolean> = {};
+      for (const day of DAYS) {
+        const existing = data.find((r) => r.day_of_week === day.id);
+        nextEnabled[day.id] = Boolean(existing);
+        nextRows[day.id] = existing ?? {
+          day_of_week: day.id,
+          start_time: day.id === 7 ? '10:00' : '09:00',
+          end_time: day.id === 7 ? '16:00' : '18:00',
+        };
+      }
+      setRows(nextRows);
+      setEnabled(nextEnabled);
+    });
+  }, [master.id]);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const payload = DAYS.filter((d) => enabled[d.id]).map((d) => rows[d.id]);
+      await api.put(`/api/admin/masters/${master.id}/schedule`, payload);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal title={`Розклад: ${master.name}`} onClose={onClose}>
+      <div className="space-y-3">
+        {DAYS.map((day) => (
+          <div key={day.id} className="grid grid-cols-[60px_1fr_1fr] gap-2 items-center">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={enabled[day.id] ?? false}
+                onChange={(e) => setEnabled({ ...enabled, [day.id]: e.target.checked })}
+              />
+              {day.label}
+            </label>
+            <input
+              type="time"
+              disabled={!enabled[day.id]}
+              value={rows[day.id]?.start_time?.slice(0, 5) ?? '09:00'}
+              onChange={(e) =>
+                setRows({ ...rows, [day.id]: { ...rows[day.id], day_of_week: day.id, start_time: e.target.value } })
+              }
+              className="border rounded-lg p-2 disabled:bg-gray-50"
+            />
+            <input
+              type="time"
+              disabled={!enabled[day.id]}
+              value={rows[day.id]?.end_time?.slice(0, 5) ?? '18:00'}
+              onChange={(e) =>
+                setRows({ ...rows, [day.id]: { ...rows[day.id], day_of_week: day.id, end_time: e.target.value } })
+              }
+              className="border rounded-lg p-2 disabled:bg-gray-50"
+            />
+          </div>
+        ))}
+        <button onClick={save} disabled={saving} className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium">
+          {saving ? 'Збереження...' : 'Зберегти розклад'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function Input({
+  label,
+  value,
+  onChange,
+  required,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  required?: boolean;
+}) {
+  return (
+    <label className="block">
+      <span className="text-sm text-gray-600">{label}</span>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        required={required}
+        className="w-full border rounded-lg p-3 mt-1"
+      />
+    </label>
+  );
+}
+
+function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end md:items-center justify-center p-0 md:p-4">
+      <div className="bg-white w-full md:max-w-lg rounded-t-2xl md:rounded-2xl p-5 max-h-[90vh] overflow-auto">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold">{title}</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-900">
+            Закрити
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
