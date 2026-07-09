@@ -42,9 +42,12 @@ async function sendReminders(
     if (!bot) continue;
 
     const dt = new Date(b.booking_datetime);
-    const serviceName = (b.services as { name_uk: string } | null)?.name_uk ?? '';
-    const masterName = (b.masters as { name: string } | null)?.name ?? '';
-    const address = (b.salons as { address: string } | null)?.address ?? '';
+    const service = Array.isArray(b.services) ? b.services[0] : b.services;
+    const master = Array.isArray(b.masters) ? b.masters[0] : b.masters;
+    const salon = Array.isArray(b.salons) ? b.salons[0] : b.salons;
+    const serviceName = (service as { name_uk: string } | null | undefined)?.name_uk ?? '';
+    const masterName = (master as { name: string } | null | undefined)?.name ?? '';
+    const address = (salon as { address: string } | null | undefined)?.address ?? '';
 
     try {
       await bot.api.sendMessage(

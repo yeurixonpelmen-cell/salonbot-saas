@@ -725,10 +725,13 @@ router.get('/admin/services', async (req: Request, res: Response) => {
       .eq('service_id', s.id);
     result.push({
       ...s,
-      masters: (links ?? []).map((l) => ({
-        id: l.master_id,
-        name: (l.masters as { name: string } | null)?.name,
-      })),
+      masters: (links ?? []).map((l) => {
+        const master = Array.isArray(l.masters) ? l.masters[0] : l.masters;
+        return {
+          id: l.master_id,
+          name: (master as { name: string } | null | undefined)?.name,
+        };
+      }),
     });
   }
   res.json(result);
