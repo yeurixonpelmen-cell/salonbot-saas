@@ -1,0 +1,9 @@
+# Railway build for npm workspace monorepo (service root: mini-app)
+[phases.install]
+cmds = ["cd .. && npm install"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm start"
