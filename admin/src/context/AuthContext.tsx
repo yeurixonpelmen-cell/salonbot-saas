@@ -6,6 +6,7 @@ interface AuthContextType {
   login: (telegramData: Record<string, string>) => Promise<void>;
   logout: () => void;
   selectSalon: (salonId: string, selectionToken: string) => Promise<void>;
+  refreshAuth: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -61,8 +62,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsAuthenticated(false);
   }
 
+  function refreshAuth() {
+    setIsAuthenticated(!!readToken());
+  }
+
   return (
-    <AuthContext.Provider value={{ isAuthenticated, login, logout, selectSalon }}>
+    <AuthContext.Provider value={{ isAuthenticated, login, logout, selectSalon, refreshAuth }}>
       {children}
     </AuthContext.Provider>
   );

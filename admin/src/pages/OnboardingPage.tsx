@@ -1,6 +1,6 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { api, setToken } from '../api';
+import { useAuth } from '../context/AuthContext';
 
 const BOT_USERNAME = import.meta.env.VITE_LOGIN_BOT_USERNAME ?? 'salonbot_login_bot';
 
@@ -14,7 +14,7 @@ type Owner = {
 type TelegramAuthData = Record<string, string>;
 
 export function OnboardingPage() {
-  const navigate = useNavigate();
+  const { refreshAuth } = useAuth();
   const loginRef = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState<Step>(0);
   const [ownerAuthData, setOwnerAuthData] = useState<TelegramAuthData | null>(() => {
@@ -176,6 +176,7 @@ export function OnboardingPage() {
         }
       );
       setToken(result.token);
+      refreshAuth();
       clearOnboardingOwner();
       setStep(4);
     } catch (err) {
@@ -257,7 +258,7 @@ export function OnboardingPage() {
           )}
 
           {step === 4 && (
-            <DoneStep botUsername={botUsername} onAdmin={() => navigate('/')} />
+            <DoneStep botUsername={botUsername} onAdmin={() => { window.location.href = '/'; }} />
           )}
         </div>
       </div>
