@@ -1,252 +1,222 @@
-import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
-  api,
-  Booking,
-  CreateBookingPayload,
-  Master,
-  Service,
-  statusLabel,
-  statusMark,
+  api, Booking, BookingStatus, Client, CreateBookingPayload, Master, Service,
+  UpdateBookingPayload, VisitStatus, statusLabel, visitStatusLabel,
 } from '../api';
 import { ScheduleGrid, formatDisplayDate, shiftDate, todayStr } from '../components/ScheduleGrid';
+import { Button, Drawer, Input, Modal } from '../components/ui';
 
-type AddDraft = {
-  masterId: string;
-  time: string;
-} | null;
+type AddDraft = { masterId: string; time: string } | null;
+const VISIT_STATUSES: VisitStatus[] = ['scheduled', 'first_visit', 'waiting', 'in_progress', 'refused', 'completed'];
+const BOOKING_STATUSES: BookingStatus[] = ['pending', 'confirmed', 'cancelled', 'completed'];
+
+function toLocalDateTimeInput(value: string) {
+  const date = new Date(value);
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
 
 export function SchedulePage() {
   const [date, setDate] = useState(todayStr());
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [masters, setMasters] = useState<Master[]>([]);
   const [services, setServices] = useState<Service[]>([]);
-  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [selected, setSelected] = useState<Booking | null>(null);
   const [addDraft, setAddDraft] = useState<AddDraft>(null);
   const [mobileMasterIndex, setMobileMasterIndex] = useState(0);
-  const [toast, setToast] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [visitFilter, setVisitFilter] = useState<VisitStatus | 'all'>('all');
+  const [attentionOnly, setAttentionOnly] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const mobileMaster = masters[mobileMasterIndex];
-
-  const refetchBookings = useCallback(async () => {
-    const data = await api.get<Booking[]>(`/api/admin/bookings?date=${date}`);
-    setBookings((prev) => {
-      if (prev.length && data.length > prev.length) {
-        const newest = data[data.length - 1];
-        setToast(`Новий запис: ${newest.client_name}, ${newest.service_name}`);
-      }
-      return data;
-    });
+  const refetch = useCallback(async () => {
+    const data = await api.get<Booking[]>(`/api/admin/bookings?date=${encodeURIComponent(date)}`);
+    setBookings(data);
+    setSelected((current) => current ? data.find((item) => item.id === current.id) ?? current : null);
   }, [date]);
 
   useEffect(() => {
-    async function loadBase() {
-      setLoading(true);
-      setError('');
-      try {
-        const [mastersData, servicesData] = await Promise.all([
-          api.get<Master[]>('/api/admin/masters'),
-          api.get<Service[]>('/api/admin/services'),
-        ]);
-        setMasters(mastersData);
-        setServices(servicesData);
-      } catch (err) {
-        setError((err as { error?: string }).error ?? 'Не вдалось завантажити дані');
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadBase();
+    setLoading(true);
+    Promise.all([
+      api.get<Master[]>('/api/admin/masters'),
+      api.get<Service[]>('/api/admin/services'),
+    ]).then(([masterData, serviceData]) => {
+      setMasters(masterData);
+      setServices(serviceData);
+    }).catch((err: { error?: string }) => setError(err.error ?? 'Не вдалося завантажити дані'))
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
-    refetchBookings().catch((err) =>
-      setError((err as { error?: string }).error ?? 'Не вдалось завантажити записи')
-    );
-  }, [refetchBookings]);
+    refetch().catch((err: { error?: string }) => setError(err.error ?? 'Не вдалося завантажити записи'));
+  }, [refetch]);
 
   useEffect(() => {
-    const id = window.setInterval(() => {
-      refetchBookings().catch(console.error);
-    }, 15000);
+    const id = window.setInterval(() => refetch().catch(console.error), 15000);
     return () => window.clearInterval(id);
-  }, [refetchBookings]);
+  }, [refetch]);
 
-  useEffect(() => {
-    if (!toast) return;
-    const id = window.setTimeout(() => setToast(''), 4000);
-    return () => window.clearTimeout(id);
-  }, [toast]);
+  const filteredBookings = useMemo(() => bookings.filter((booking) => {
+    if (visitFilter !== 'all' && booking.visit_status !== visitFilter) return false;
+    if (attentionOnly && !booking.needs_attention && !booking.has_conflict) return false;
+    return true;
+  }), [bookings, visitFilter, attentionOnly]);
 
-  function openAdd(masterId: string, time: string) {
-    setAddDraft({ masterId, time });
+  async function updateBooking(id: string, payload: UpdateBookingPayload) {
+    await api.patch<Booking>(`/api/admin/bookings/${id}`, payload);
+    await refetch();
   }
-
-  async function updateBooking(id: string, body: Partial<Pick<Booking, 'status' | 'notes'>>) {
-    await api.patch<Booking>(`/api/admin/bookings/${id}`, body);
-    await refetchBookings();
-    const updated = await api.get<Booking[]>(`/api/admin/bookings?date=${date}`);
-    setSelectedBooking(updated.find((b) => b.id === id) ?? null);
-  }
-
-  const currentMasterName = useMemo(() => mobileMaster?.name ?? 'Майстер', [mobileMaster]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+    <div className="page-stack">
+      <header className="schedule-page-header">
         <div>
-          <h1 className="text-2xl font-bold">Розклад</h1>
-          <p className="text-sm text-gray-500">Сітка по майстрах і часу, як у iClinic</p>
+          <span className="eyebrow">Календар команди</span>
+          <h1>Розклад</h1>
+          <p>{formatDisplayDate(date)} · {bookings.length} записів</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button className="px-3 py-2 rounded-lg bg-white border" onClick={() => setDate(shiftDate(date, -1))}>
-            ←
-          </button>
-          <button className="px-3 py-2 rounded-lg bg-white border font-medium min-w-36">
-            {formatDisplayDate(date)}
-          </button>
-          <button className="px-3 py-2 rounded-lg bg-white border" onClick={() => setDate(shiftDate(date, 1))}>
-            →
-          </button>
-          <button className="px-3 py-2 rounded-lg bg-blue-600 text-white" onClick={() => setDate(todayStr())}>
-            Сьогодні
-          </button>
-          <button
-            className="px-3 py-2 rounded-lg bg-green-600 text-white"
-            onClick={() => openAdd(masters[0]?.id ?? '', '09:00')}
-            disabled={!masters.length}
-          >
-            + Додати запис
-          </button>
+        <Button onClick={() => setAddDraft({ masterId: masters[0]?.id ?? '', time: '09:00' })} disabled={!masters.length}>
+          + Новий запис
+        </Button>
+      </header>
+
+      <section className="schedule-toolbar">
+        <div className="date-controls">
+          <Button variant="secondary" onClick={() => setDate(shiftDate(date, -1))}>←</Button>
+          <Input aria-label="Дата" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+          <Button variant="secondary" onClick={() => setDate(shiftDate(date, 1))}>→</Button>
+          <Button variant="ghost" onClick={() => setDate(todayStr())}>Сьогодні</Button>
         </div>
+        <div className="schedule-filters">
+          <select className="ui-input" value={visitFilter} onChange={(event) => setVisitFilter(event.target.value as VisitStatus | 'all')}>
+            <option value="all">Усі стани візиту</option>
+            {VISIT_STATUSES.map((status) => <option value={status} key={status}>{visitStatusLabel(status)}</option>)}
+          </select>
+          <label className="check-filter">
+            <input type="checkbox" checked={attentionOnly} onChange={(event) => setAttentionOnly(event.target.checked)} />
+            Потребують уваги
+          </label>
+        </div>
+      </section>
+
+      <div className="status-legend">
+        <span><i className="legend-dot refused" /> Відмова</span>
+        <span><i className="legend-dot waiting" /> Очікує</span>
+        <span><i className="legend-dot first" /> Перший візит</span>
+        <span><i className="legend-dot completed" /> Завершено</span>
+        <span><i className="legend-dot default" /> Заплановано</span>
+        <span><i className="legend-outline" /> Увага / конфлікт</span>
       </div>
 
-      {toast && <div className="rounded-xl bg-blue-50 border border-blue-200 p-3 text-blue-800">{toast}</div>}
-      {error && <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-red-800">{error}</div>}
-      {loading && <div className="rounded-xl bg-white border p-3 text-gray-500">Завантаження...</div>}
+      {error && <div className="notice-error">{error}</div>}
+      {loading && <div className="notice">Завантаження…</div>}
 
-      <div className="md:hidden flex items-center justify-between bg-white border rounded-xl p-3">
-        <button
-          onClick={() => setMobileMasterIndex((i) => Math.max(0, i - 1))}
-          disabled={mobileMasterIndex === 0}
-          className="px-3 py-2 rounded-lg border disabled:opacity-40"
-        >
-          ←
-        </button>
-        <div className="font-medium">{currentMasterName}</div>
-        <button
-          onClick={() => setMobileMasterIndex((i) => Math.min(masters.length - 1, i + 1))}
-          disabled={mobileMasterIndex >= masters.length - 1}
-          className="px-3 py-2 rounded-lg border disabled:opacity-40"
-        >
-          →
-        </button>
+      <div className="mobile-master-switch">
+        <Button variant="secondary" disabled={mobileMasterIndex === 0} onClick={() => setMobileMasterIndex((index) => index - 1)}>←</Button>
+        <strong>{masters[mobileMasterIndex]?.name ?? 'Спеціаліст'}</strong>
+        <Button variant="secondary" disabled={mobileMasterIndex >= masters.length - 1} onClick={() => setMobileMasterIndex((index) => index + 1)}>→</Button>
       </div>
 
       <ScheduleGrid
-        bookings={bookings}
+        bookings={filteredBookings}
         masters={masters}
         date={date}
         mobileMasterIndex={mobileMasterIndex}
-        onBookingClick={setSelectedBooking}
-        onAddClick={openAdd}
+        onBookingClick={setSelected}
+        onAddClick={(masterId, time) => setAddDraft({ masterId, time })}
+        onNoteSave={(booking, notes) => updateBooking(booking.id, { notes })}
       />
 
-      {selectedBooking && (
-        <BookingModal
-          booking={selectedBooking}
-          onClose={() => setSelectedBooking(null)}
-          onUpdate={(body) => updateBooking(selectedBooking.id, body)}
+      {selected && (
+        <BookingDrawer
+          booking={selected}
+          masters={masters}
+          services={services}
+          onClose={() => setSelected(null)}
+          onSave={(payload) => updateBooking(selected.id, payload)}
         />
       )}
-
       {addDraft && (
-        <AddBookingModal
+        <BookingForm
           draft={addDraft}
           date={date}
           masters={masters}
           services={services}
           onClose={() => setAddDraft(null)}
-          onCreated={async () => {
-            setAddDraft(null);
-            await refetchBookings();
-          }}
+          onCreated={async () => { setAddDraft(null); await refetch(); }}
         />
       )}
     </div>
   );
 }
 
-function BookingModal({
-  booking,
-  onClose,
-  onUpdate,
+function BookingDrawer({
+  booking, masters, services, onClose, onSave,
 }: {
   booking: Booking;
+  masters: Master[];
+  services: Service[];
   onClose: () => void;
-  onUpdate: (body: Partial<Pick<Booking, 'status' | 'notes'>>) => Promise<void>;
+  onSave: (payload: UpdateBookingPayload) => Promise<void>;
 }) {
-  const [notes, setNotes] = useState(booking.notes ?? '');
+  const localDateTime = toLocalDateTimeInput(booking.datetime);
+  const [form, setForm] = useState({
+    visit_status: booking.visit_status,
+    status: booking.status,
+    needs_attention: booking.needs_attention,
+    attention_reason: booking.attention_reason ?? '',
+    notes: booking.notes ?? '',
+    masterId: booking.master_id,
+    serviceId: booking.service_id,
+    datetime: localDateTime,
+  });
   const [saving, setSaving] = useState(false);
 
-  async function save(body: Partial<Pick<Booking, 'status' | 'notes'>>) {
+  async function save() {
     setSaving(true);
     try {
-      await onUpdate(body);
+      await onSave({ ...form, attention_reason: form.attention_reason || null });
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Modal title={`Запис #${booking.id.slice(0, 8)}`} onClose={onClose}>
-      <div className="space-y-3">
-        <p>👤 {booking.client_name}</p>
-        {booking.client_phone && <p>📞 {booking.client_phone}</p>}
-        <p>
-          ✂️ {booking.service_name} • {booking.duration_minutes} хв
-        </p>
-        <p>👨 Майстер: {booking.master_name}</p>
-        <p>🕐 {new Date(booking.datetime).toLocaleString('uk-UA')}</p>
-        {booking.service_price && <p>💰 {booking.service_price} ₴</p>}
-        <p>
-          Статус: {statusMark(booking.status)} {statusLabel(booking.status)}
-        </p>
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Нотатка"
-          className="w-full border rounded-lg p-3"
-          rows={3}
-        />
-        <div className="flex flex-wrap gap-2">
-          <button disabled={saving} onClick={() => save({ status: 'confirmed' })} className="px-3 py-2 rounded-lg bg-green-600 text-white">
-            Підтвердити
-          </button>
-          <button disabled={saving} onClick={() => save({ status: 'cancelled' })} className="px-3 py-2 rounded-lg bg-red-600 text-white">
-            Скасувати
-          </button>
-          <button disabled={saving} onClick={() => save({ status: 'completed' })} className="px-3 py-2 rounded-lg bg-gray-700 text-white">
-            Завершити
-          </button>
-          <button disabled={saving} onClick={() => save({ notes })} className="px-3 py-2 rounded-lg bg-blue-600 text-white">
-            Зберегти нотатку
-          </button>
+    <Drawer title="Деталі запису" onClose={onClose}>
+      <div className="client-summary">
+        <span className="large-initials">{booking.client_initials || booking.client_name[0]}</span>
+        <div>
+          <h3>{booking.client_name}</h3>
+          <p>{booking.client_phone || 'Телефон не вказано'}</p>
+          {booking.client_id && <Link to={`/clients/${booking.client_id}`}>Відкрити картку клієнта →</Link>}
         </div>
       </div>
-    </Modal>
+      <div className="form-grid">
+        <label>Стан візиту<select value={form.visit_status} onChange={(e) => setForm({ ...form, visit_status: e.target.value as VisitStatus })}>
+          {VISIT_STATUSES.map((status) => <option key={status} value={status}>{visitStatusLabel(status)}</option>)}
+        </select></label>
+        <label>Статус запису<select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as BookingStatus })}>
+          {BOOKING_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
+        </select></label>
+        <label>Спеціаліст<select value={form.masterId} onChange={(e) => setForm({ ...form, masterId: e.target.value })}>
+          {masters.map((master) => <option key={master.id} value={master.id}>{master.name}</option>)}
+        </select></label>
+        <label>Послуга<select value={form.serviceId} onChange={(e) => setForm({ ...form, serviceId: e.target.value })}>
+          {services.map((service) => <option key={service.id} value={service.id}>{service.name_uk}</option>)}
+        </select></label>
+        <label className="full">Дата й час<input type="datetime-local" value={form.datetime} onChange={(e) => setForm({ ...form, datetime: e.target.value })} /></label>
+        <label className="attention-check full"><input type="checkbox" checked={form.needs_attention} onChange={(e) => setForm({ ...form, needs_attention: e.target.checked })} /> Потребує уваги</label>
+        {form.needs_attention && <label className="full">Причина<input value={form.attention_reason} onChange={(e) => setForm({ ...form, attention_reason: e.target.value })} /></label>}
+        <label className="full">Нотатки<textarea rows={5} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></label>
+      </div>
+      <div className="drawer-actions"><Button onClick={save} disabled={saving}>{saving ? 'Збереження…' : 'Зберегти зміни'}</Button></div>
+    </Drawer>
   );
 }
 
-function AddBookingModal({
-  draft,
-  date,
-  masters,
-  services,
-  onClose,
-  onCreated,
+function BookingForm({
+  draft, date, masters, services, onClose, onCreated,
 }: {
   draft: { masterId: string; time: string };
   date: string;
@@ -258,31 +228,50 @@ function AddBookingModal({
   const [masterId, setMasterId] = useState(draft.masterId);
   const [serviceId, setServiceId] = useState(services[0]?.id ?? '');
   const [time, setTime] = useState(draft.time);
+  const [query, setQuery] = useState('');
+  const [clients, setClients] = useState<Client[]>([]);
+  const [clientId, setClientId] = useState('');
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [notes, setNotes] = useState('');
-  const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      if (!query.trim()) return setClients([]);
+      api.get<Client[]>(`/api/admin/clients?search=${encodeURIComponent(query)}`).then(setClients).catch(() => setClients([]));
+    }, 250);
+    return () => window.clearTimeout(id);
+  }, [query]);
+
+  function selectClient(client: Client) {
+    setClientId(client.id);
+    setClientName(client.full_name);
+    setClientPhone(client.phone ?? '');
+    setQuery(client.full_name);
+    setClients([]);
+  }
+
+  async function quickCreate() {
+    if (!clientName.trim()) return;
+    const client = await api.post<Client>('/api/admin/clients', { full_name: clientName, phone: clientPhone || null });
+    selectClient(client);
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
     setSaving(true);
     setError('');
-
     const body: CreateBookingPayload = {
-      masterId,
-      serviceId,
-      clientName,
-      clientPhone,
-      datetime: `${date}T${time}:00`,
-      notes,
+      masterId, serviceId, datetime: `${date}T${time}:00`, notes,
+      ...(clientId ? { clientId } : { clientName, clientPhone }),
     };
-
     try {
-      await api.post<{ id: string }>('/api/admin/bookings', body);
+      await api.post('/api/admin/bookings', body);
       await onCreated();
     } catch (err) {
-      setError((err as { error?: string }).error ?? 'Не вдалось створити запис');
+      setError((err as { error?: string }).error ?? 'Не вдалося створити запис');
     } finally {
       setSaving(false);
     }
@@ -290,67 +279,22 @@ function AddBookingModal({
 
   return (
     <Modal title="Новий запис" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-3">
-        {error && <div className="rounded-lg bg-red-50 border border-red-200 p-2 text-red-800 text-sm">{error}</div>}
-        <label className="block">
-          <span className="text-sm text-gray-600">Послуга *</span>
-          <select value={serviceId} onChange={(e) => setServiceId(e.target.value)} className="w-full border rounded-lg p-3 mt-1" required>
-            {services.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name_uk} • {s.duration_minutes} хв{s.price ? ` • ${s.price} ₴` : ''}
-              </option>
-            ))}
-          </select>
+      <form className="form-grid" onSubmit={submit}>
+        {error && <div className="notice-error full">{error}</div>}
+        <label className="full">Пошук клієнта<input value={query} onChange={(e) => { setQuery(e.target.value); setClientId(''); }} placeholder="Ім’я або телефон" />
+          {!!clients.length && <div className="client-results">{clients.map((client) => <button type="button" key={client.id} onClick={() => selectClient(client)}><b>{client.full_name}</b><span>{client.phone}</span></button>)}</div>}
         </label>
-        <label className="block">
-          <span className="text-sm text-gray-600">Майстер *</span>
-          <select value={masterId} onChange={(e) => setMasterId(e.target.value)} className="w-full border rounded-lg p-3 mt-1" required>
-            {masters.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block">
-          <span className="text-sm text-gray-600">Ім'я клієнта *</span>
-          <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="w-full border rounded-lg p-3 mt-1" required />
-        </label>
-        <label className="block">
-          <span className="text-sm text-gray-600">Телефон</span>
-          <input value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} className="w-full border rounded-lg p-3 mt-1" />
-        </label>
-        <label className="block">
-          <span className="text-sm text-gray-600">Дата і час *</span>
-          <div className="flex gap-2 mt-1">
-            <input value={date} disabled className="w-full border rounded-lg p-3 bg-gray-50" />
-            <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="w-36 border rounded-lg p-3" required />
-          </div>
-        </label>
-        <label className="block">
-          <span className="text-sm text-gray-600">Нотатка</span>
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full border rounded-lg p-3 mt-1" rows={3} />
-        </label>
-        <button disabled={saving || !serviceId || !masterId} className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-50">
-          {saving ? 'Збереження...' : 'Зберегти'}
-        </button>
+        <label>Ім’я клієнта<input required value={clientName} onChange={(e) => { setClientName(e.target.value); setClientId(''); }} /></label>
+        <label>Телефон<input value={clientPhone} onChange={(e) => { setClientPhone(e.target.value); setClientId(''); }} /></label>
+        {!clientId && clientName && <Button className="full" type="button" variant="secondary" onClick={quickCreate}>+ Створити картку клієнта</Button>}
+        {clientId && <div className="selected-client full">✓ Обрано клієнта з бази</div>}
+        <label>Спеціаліст<select required value={masterId} onChange={(e) => setMasterId(e.target.value)}>{masters.map((master) => <option key={master.id} value={master.id}>{master.name}</option>)}</select></label>
+        <label>Послуга<select required value={serviceId} onChange={(e) => setServiceId(e.target.value)}>{services.map((service) => <option key={service.id} value={service.id}>{service.name_uk} · {service.duration_minutes} хв</option>)}</select></label>
+        <label>Дата<input value={date} disabled /></label>
+        <label>Час<input type="time" required value={time} onChange={(e) => setTime(e.target.value)} /></label>
+        <label className="full">Нотатка<textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
+        <Button className="full" disabled={saving || !masterId || !serviceId}>{saving ? 'Збереження…' : 'Створити запис'}</Button>
       </form>
     </Modal>
-  );
-}
-
-function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-end md:items-center justify-center p-0 md:p-4">
-      <div className="bg-white w-full md:max-w-lg rounded-t-2xl md:rounded-2xl p-5 max-h-[90vh] overflow-auto">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold">{title}</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-900">
-            Закрити
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
   );
 }

@@ -1,7 +1,6 @@
 -- SalonBot SaaS — Supabase schema (run in SQL Editor)
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
-CREATE EXTENSION IF NOT EXISTS btree_gist;
 
 -- Salons
 CREATE TABLE salons (
@@ -50,6 +49,27 @@ CREATE TABLE schedules (
   UNIQUE (master_id, day_of_week)
 );
 
+-- CRM clients
+CREATE TABLE clients (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  salon_id UUID NOT NULL REFERENCES salons(id) ON DELETE CASCADE,
+  telegram_id BIGINT,
+  full_name TEXT NOT NULL,
+  phone TEXT,
+  email TEXT,
+  date_of_birth DATE,
+  general_notes TEXT,
+  tags TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX clients_salon_telegram_uidx
+  ON clients (salon_id, telegram_id) WHERE telegram_id IS NOT NULL;
+CREATE UNIQUE INDEX clients_salon_phone_uidx
+  ON clients (salon_id, phone) WHERE phone IS NOT NULL AND btrim(phone) <> '';
+CREATE INDEX clients_salon_name_idx ON clients (salon_id, full_name);
+
 -- Bookings
 CREATE TABLE bookings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -59,9 +79,15 @@ CREATE TABLE bookings (
   client_telegram_id BIGINT NOT NULL,
   client_name TEXT NOT NULL,
   client_phone TEXT,
+  client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
   booking_datetime TIMESTAMPTZ NOT NULL,
   duration_minutes INTEGER NOT NULL,
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending','confirmed','cancelled','completed')),
+  visit_status TEXT NOT NULL DEFAULT 'scheduled' CHECK (
+    visit_status IN ('scheduled','first_visit','waiting','in_progress','refused','completed')
+  ),
+  needs_attention BOOLEAN NOT NULL DEFAULT false,
+  attention_reason TEXT,
   notes TEXT,
   reminder_24h_sent BOOLEAN DEFAULT false,
   reminder_2h_sent BOOLEAN DEFAULT false,
@@ -69,15 +95,34 @@ CREATE TABLE bookings (
   updated_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE (client_telegram_id, master_id, booking_datetime)
 );
+CREATE INDEX bookings_salon_client_idx
+  ON bookings (salon_id, client_id, booking_datetime DESC);
 
-CREATE OR REPLACE FUNCTION tstz_add_minutes(ts timestamptz, mins integer)
-RETURNS timestamptz AS $$ SELECT ts + (mins * interval '1 minute'); $$
-LANGUAGE sql IMMUTABLE;
+CREATE TABLE booking_notes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  salon_id UUID NOT NULL REFERENCES salons(id) ON DELETE CASCADE,
+  booking_id UUID NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+  author_id BIGINT,
+  body TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX booking_notes_booking_idx
+  ON booking_notes (salon_id, booking_id, created_at);
 
-ALTER TABLE bookings ADD CONSTRAINT no_overlap EXCLUDE USING gist (
-  master_id WITH =,
-  tstzrange(booking_datetime, tstz_add_minutes(booking_datetime, duration_minutes)) WITH &&
-) WHERE (status <> 'cancelled');
+CREATE TABLE client_files (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  salon_id UUID NOT NULL REFERENCES salons(id) ON DELETE CASCADE,
+  client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+  booking_id UUID REFERENCES bookings(id) ON DELETE CASCADE,
+  storage_path TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  size_bytes BIGINT NOT NULL CHECK (size_bytes >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT client_files_owner_check CHECK (client_id IS NOT NULL OR booking_id IS NOT NULL)
+);
+CREATE INDEX client_files_client_idx ON client_files (salon_id, client_id, created_at);
+CREATE INDEX client_files_booking_idx ON client_files (salon_id, booking_id, created_at);
 
 -- Master-service links
 CREATE TABLE master_services (
@@ -105,6 +150,9 @@ ALTER TABLE salons ENABLE ROW LEVEL SECURITY;
 ALTER TABLE masters ENABLE ROW LEVEL SECURITY;
 ALTER TABLE services ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE booking_notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE client_files ENABLE ROW LEVEL SECURITY;
 ALTER TABLE schedules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE master_services ENABLE ROW LEVEL SECURITY;
 
@@ -122,7 +170,18 @@ BEFORE UPDATE ON bookings
 FOR EACH ROW
 EXECUTE FUNCTION set_updated_at();
 
+CREATE TRIGGER clients_set_updated_at
+BEFORE UPDATE ON clients
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
+
 -- Storage bucket for logos (run in Supabase dashboard or via API)
 -- INSERT INTO storage.buckets (id, name, public)
 -- VALUES ('logos', 'logos', true)
 -- ON CONFLICT (id) DO NOTHING;
+
+-- Private CRM attachment bucket (25 MB)
+INSERT INTO storage.buckets (id, name, public, file_size_limit)
+VALUES ('client-files', 'client-files', false, 26214400)
+ON CONFLICT (id) DO UPDATE
+  SET public = false, file_size_limit = EXCLUDED.file_size_limit;

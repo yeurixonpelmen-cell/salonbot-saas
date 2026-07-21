@@ -52,19 +52,71 @@ export const api = {
 
 export interface Booking {
   id: string;
+  client_id: string | null;
   client_name: string;
   client_phone: string | null;
+  client_initials?: string | null;
+  client_profile?: string | null;
   master_id: string;
   master_name: string;
+  service_id: string;
   service_name: string;
   service_price: number | null;
   duration_minutes: number;
   datetime: string;
   status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
   notes: string | null;
+  visit_status: VisitStatus;
+  needs_attention: boolean;
+  attention_reason: string | null;
+  has_conflict: boolean;
+  files_count: number;
 }
 
 export type BookingStatus = Booking['status'];
+export type VisitStatus =
+  | 'scheduled'
+  | 'first_visit'
+  | 'waiting'
+  | 'in_progress'
+  | 'refused'
+  | 'completed';
+
+export interface Client {
+  id: string;
+  full_name: string;
+  phone: string | null;
+  email?: string | null;
+  date_of_birth?: string | null;
+  telegram_id?: number | null;
+  initials?: string | null;
+  tags?: string[];
+  general_notes?: string | null;
+  visits_count?: number;
+  last_visit_at?: string | null;
+  created_at?: string;
+  bookings?: Booking[];
+}
+
+export interface ClientFile {
+  id: string;
+  client_id?: string;
+  file_name?: string;
+  size_bytes?: number;
+  mime_type?: string | null;
+  created_at?: string;
+  signed_url?: string | null;
+  url?: string | null;
+}
+
+export interface ClientPayload {
+  full_name: string;
+  phone?: string | null;
+  email?: string | null;
+  date_of_birth?: string | null;
+  tags?: string[];
+  general_notes?: string | null;
+}
 
 export interface Master {
   id: string;
@@ -94,10 +146,23 @@ export interface Service {
 export interface CreateBookingPayload {
   masterId: string;
   serviceId: string;
-  clientName: string;
+  clientId?: string;
+  clientName?: string;
   clientPhone?: string;
   datetime: string;
   notes?: string;
+}
+
+export interface UpdateBookingPayload {
+  notes?: string | null;
+  status?: BookingStatus;
+  visit_status?: VisitStatus;
+  needs_attention?: boolean;
+  attention_reason?: string | null;
+  masterId?: string;
+  serviceId?: string;
+  datetime?: string;
+  clientId?: string;
 }
 
 export interface ServicePayload {
@@ -180,4 +245,16 @@ export function statusMark(status: BookingStatus): string {
     completed: '⚫',
   };
   return marks[status];
+}
+
+export function visitStatusLabel(status: VisitStatus): string {
+  const labels: Record<VisitStatus, string> = {
+    scheduled: 'Заплановано',
+    first_visit: 'Перший візит',
+    waiting: 'Очікує',
+    in_progress: 'На прийомі',
+    refused: 'Відмовився',
+    completed: 'Завершено',
+  };
+  return labels[status];
 }
