@@ -154,7 +154,7 @@ export function OnboardingPage() {
   async function finish() {
     if (!owner || !ownerAuthData) {
       clearOnboardingOwner();
-      setError('Потрібно увійти через Telegram ще раз, потім одразу завершити всі кроки.');
+      setError('Сесія Telegram відсутня. Увійдіть ще раз і завершіть підключення в цій вкладці.');
       setStep(0);
       return;
     }
