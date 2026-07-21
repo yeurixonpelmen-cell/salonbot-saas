@@ -50,13 +50,16 @@ export function OnboardingPage() {
   useEffect(() => {
     if (step !== 0 || !loginRef.current) return;
 
-    (window as unknown as { onOnboardingTelegramAuth?: (user: Record<string, string>) => void })
-      .onOnboardingTelegramAuth = (user: Record<string, string>) => {
-      const nextOwner = { id: Number(user.id), first_name: user.first_name };
+    (window as unknown as { onOnboardingTelegramAuth?: (user: Record<string, string | number>) => void })
+      .onOnboardingTelegramAuth = (user: Record<string, string | number>) => {
+      const normalized: TelegramAuthData = Object.fromEntries(
+        Object.entries(user).map(([key, value]) => [key, String(value)])
+      );
+      const nextOwner = { id: Number(normalized.id), first_name: normalized.first_name };
       sessionStorage.setItem('onboarding_owner_id', String(nextOwner.id));
       sessionStorage.setItem('onboarding_first_name', nextOwner.first_name ?? '');
-      sessionStorage.setItem('onboarding_owner_auth', JSON.stringify(user));
-      setOwnerAuthData(user);
+      sessionStorage.setItem('onboarding_owner_auth', JSON.stringify(normalized));
+      setOwnerAuthData(normalized);
       setOwner(nextOwner);
       setStep(1);
     };
@@ -140,9 +143,18 @@ export function OnboardingPage() {
     }
   }
 
+  function clearOnboardingOwner() {
+    sessionStorage.removeItem('onboarding_owner_id');
+    sessionStorage.removeItem('onboarding_first_name');
+    sessionStorage.removeItem('onboarding_owner_auth');
+    setOwner(null);
+    setOwnerAuthData(null);
+  }
+
   async function finish() {
     if (!owner || !ownerAuthData) {
-      setError('Потрібно увійти через Telegram ще раз.');
+      clearOnboardingOwner();
+      setError('Потрібно увійти через Telegram ще раз, потім одразу завершити всі кроки.');
       setStep(0);
       return;
     }
@@ -164,12 +176,17 @@ export function OnboardingPage() {
         }
       );
       setToken(result.token);
-      sessionStorage.removeItem('onboarding_owner_id');
-      sessionStorage.removeItem('onboarding_first_name');
-      sessionStorage.removeItem('onboarding_owner_auth');
+      clearOnboardingOwner();
       setStep(4);
     } catch (err) {
-      setError((err as { error?: string }).error ?? 'Не вдалось завершити онбординг');
+      const message = (err as { error?: string }).error ?? 'Не вдалось завершити онбординг';
+      if (message.toLowerCase().includes('telegram login') || message.toLowerCase().includes('unauthorized')) {
+        clearOnboardingOwner();
+        setStep(0);
+        setError('Сесія Telegram закінчилась. Увійдіть ще раз і одразу натисніть Завершити на кроці 3.');
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }

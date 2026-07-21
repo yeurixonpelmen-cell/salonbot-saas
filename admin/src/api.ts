@@ -25,8 +25,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, { ...options, headers });
   if (res.status === 401) {
     clearToken();
-    window.location.href = '/login';
-    throw new Error('Unauthorized');
+    // Onboarding complete uses Telegram login data, not JWT — don't force /login redirect.
+    if (!path.startsWith('/api/onboarding/')) {
+      window.location.href = '/login';
+    }
+    const err = await res.json().catch(() => ({ error: 'Unauthorized' }));
+    throw err;
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Error' }));
