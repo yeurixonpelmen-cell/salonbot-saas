@@ -184,33 +184,43 @@ function BookingDrawer({
 
   return (
     <Drawer title="Деталі запису" onClose={onClose}>
-      <div className="client-summary">
-        <span className="large-initials">{booking.client_initials || booking.client_name[0]}</span>
-        <div>
-          <h3>{booking.client_name}</h3>
-          <p>{booking.client_phone || 'Телефон не вказано'}</p>
-          {booking.client_id && <Link to={`/clients/${booking.client_id}`}>Відкрити картку клієнта →</Link>}
+      <form
+        className="drawer-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void save();
+        }}
+      >
+        <div className="client-summary">
+          <span className="large-initials">{booking.client_initials || booking.client_name[0]}</span>
+          <div>
+            <h3>{booking.client_name}</h3>
+            <p>{booking.client_phone || 'Телефон не вказано'}</p>
+            {booking.client_id && <Link to={`/clients/${booking.client_id}`}>Відкрити картку клієнта →</Link>}
+          </div>
         </div>
-      </div>
-      <div className="form-grid">
-        <label>Стан візиту<select value={form.visit_status} onChange={(e) => setForm({ ...form, visit_status: e.target.value as VisitStatus })}>
-          {VISIT_STATUSES.map((status) => <option key={status} value={status}>{visitStatusLabel(status)}</option>)}
-        </select></label>
-        <label>Статус запису<select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as BookingStatus })}>
-          {BOOKING_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
-        </select></label>
-        <label>Спеціаліст<select value={form.masterId} onChange={(e) => setForm({ ...form, masterId: e.target.value })}>
-          {masters.map((master) => <option key={master.id} value={master.id}>{master.name}</option>)}
-        </select></label>
-        <label>Послуга<select value={form.serviceId} onChange={(e) => setForm({ ...form, serviceId: e.target.value })}>
-          {services.map((service) => <option key={service.id} value={service.id}>{service.name_uk}</option>)}
-        </select></label>
-        <label className="full">Дата й час<input type="datetime-local" value={form.datetime} onChange={(e) => setForm({ ...form, datetime: e.target.value })} /></label>
-        <label className="attention-check full"><input type="checkbox" checked={form.needs_attention} onChange={(e) => setForm({ ...form, needs_attention: e.target.checked })} /> Потребує уваги</label>
-        {form.needs_attention && <label className="full">Причина<input value={form.attention_reason} onChange={(e) => setForm({ ...form, attention_reason: e.target.value })} /></label>}
-        <label className="full">Нотатки<textarea rows={5} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></label>
-      </div>
-      <div className="drawer-actions"><Button onClick={save} disabled={saving}>{saving ? 'Збереження…' : 'Зберегти зміни'}</Button></div>
+        <div className="form-grid">
+          <label>Стан візиту<select value={form.visit_status} onChange={(e) => setForm({ ...form, visit_status: e.target.value as VisitStatus })}>
+            {VISIT_STATUSES.map((status) => <option key={status} value={status}>{visitStatusLabel(status)}</option>)}
+          </select></label>
+          <label>Статус запису<select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as BookingStatus })}>
+            {BOOKING_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
+          </select></label>
+          <label>Спеціаліст<select value={form.masterId} onChange={(e) => setForm({ ...form, masterId: e.target.value })}>
+            {masters.map((master) => <option key={master.id} value={master.id}>{master.name}</option>)}
+          </select></label>
+          <label>Послуга<select value={form.serviceId} onChange={(e) => setForm({ ...form, serviceId: e.target.value })}>
+            {services.map((service) => <option key={service.id} value={service.id}>{service.name_uk}</option>)}
+          </select></label>
+          <label className="full">Дата й час<input type="datetime-local" value={form.datetime} onChange={(e) => setForm({ ...form, datetime: e.target.value })} /></label>
+          <label className="attention-check full"><input type="checkbox" checked={form.needs_attention} onChange={(e) => setForm({ ...form, needs_attention: e.target.checked })} /> Потребує уваги</label>
+          {form.needs_attention && <label className="full">Причина<input value={form.attention_reason} onChange={(e) => setForm({ ...form, attention_reason: e.target.value })} /></label>}
+          <label className="full">Нотатки<textarea rows={5} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Ctrl+Enter — зберегти" /></label>
+        </div>
+        <div className="drawer-actions">
+          <Button type="submit" disabled={saving}>{saving ? 'Збереження…' : 'Зберегти зміни'}</Button>
+        </div>
+      </form>
     </Drawer>
   );
 }
@@ -293,7 +303,7 @@ function BookingForm({
         <label>Дата<input value={date} disabled /></label>
         <label>Час<input type="time" required value={time} onChange={(e) => setTime(e.target.value)} /></label>
         <label className="full">Нотатка<textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
-        <Button className="full" disabled={saving || !masterId || !serviceId}>{saving ? 'Збереження…' : 'Створити запис'}</Button>
+        <Button type="submit" className="full" disabled={saving || !masterId || !serviceId}>{saving ? 'Збереження…' : 'Створити запис'}</Button>
       </form>
     </Modal>
   );

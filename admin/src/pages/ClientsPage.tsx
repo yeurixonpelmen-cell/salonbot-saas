@@ -114,7 +114,7 @@ function ClientForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
         <label>Дата народження<input type="date" value={form.date_of_birth ?? ''} onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })} /></label>
         <label>Теги<input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="VIP, постійний (необов’язково)" /></label>
         <label className="full">Загальні нотатки<textarea rows={4} value={form.general_notes ?? ''} onChange={(e) => setForm({ ...form, general_notes: e.target.value })} /></label>
-        <Button className="full" disabled={saving}>{saving ? 'Збереження…' : 'Створити клієнта'}</Button>
+        <Button type="submit" className="full" disabled={saving}>{saving ? 'Збереження…' : 'Створити клієнта'}</Button>
       </form>
     </Modal>
   );

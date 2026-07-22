@@ -206,7 +206,7 @@ function ServiceForm({
           />
           Активна
         </label>
-        <button disabled={saving} className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium">
+        <button type="submit" disabled={saving} className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium">
           {saving ? 'Збереження...' : 'Зберегти'}
         </button>
       </form>

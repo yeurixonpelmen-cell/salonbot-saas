@@ -132,25 +132,37 @@ export function ScheduleGrid({
                         }}
                       >✎</button>
                       {noteBooking === booking.id && (
-                        <div className="inline-note" onClick={(event) => event.stopPropagation()}>
-                          <textarea value={note} onChange={(event) => setNote(event.target.value)} autoFocus />
+                        <form
+                          className="inline-note"
+                          onClick={(event) => event.stopPropagation()}
+                          onSubmit={async (event) => {
+                            event.preventDefault();
+                            setSavingNote(true);
+                            try {
+                              await onNoteSave(booking, note);
+                              setNoteBooking(null);
+                            } finally {
+                              setSavingNote(false);
+                            }
+                          }}
+                        >
+                          <textarea
+                            value={note}
+                            onChange={(event) => setNote(event.target.value)}
+                            autoFocus
+                            placeholder="Enter — зберегти, Shift+Enter — новий рядок"
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' && !event.shiftKey) {
+                                event.preventDefault();
+                                event.currentTarget.form?.requestSubmit();
+                              }
+                            }}
+                          />
                           <div>
                             <button type="button" onClick={() => setNoteBooking(null)}>Скасувати</button>
-                            <button
-                              type="button"
-                              disabled={savingNote}
-                              onClick={async () => {
-                                setSavingNote(true);
-                                try {
-                                  await onNoteSave(booking, note);
-                                  setNoteBooking(null);
-                                } finally {
-                                  setSavingNote(false);
-                                }
-                              }}
-                            >Зберегти</button>
+                            <button type="submit" disabled={savingNote}>Зберегти</button>
                           </div>
-                        </div>
+                        </form>
                       )}
                     </article>
                   );

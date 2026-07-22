@@ -118,7 +118,7 @@ export function ClientDetailsPage() {
             <label>Дата народження<input type="date" value={form.date_of_birth ?? ''} onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })} /></label>
             <label>Теги<input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="через кому" /></label>
             <label className="full">Загальні нотатки<textarea rows={5} value={form.general_notes ?? ''} onChange={(e) => setForm({ ...form, general_notes: e.target.value })} /></label>
-            <Button disabled={saving}>{saving ? 'Збереження…' : 'Зберегти'}</Button>
+            <Button type="submit" disabled={saving}>{saving ? 'Збереження…' : 'Зберегти'}</Button>
           </form>
         </section>
 

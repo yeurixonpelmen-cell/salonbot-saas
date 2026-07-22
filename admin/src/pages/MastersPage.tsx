@@ -161,7 +161,7 @@ function MasterForm({
           />
           Активний
         </label>
-        <button disabled={saving} className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium">
+        <button type="submit" disabled={saving} className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium">
           {saving ? 'Збереження...' : 'Зберегти'}
         </button>
       </form>
@@ -205,7 +205,13 @@ function ScheduleEditor({ master, onClose }: { master: Master; onClose: () => vo
 
   return (
     <Modal title={`Розклад: ${master.name}`} onClose={onClose}>
-      <div className="space-y-3">
+      <form
+        className="space-y-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void save();
+        }}
+      >
         {DAYS.map((day) => (
           <div key={day.id} className="grid grid-cols-[60px_1fr_1fr] gap-2 items-center">
             <label className="flex items-center gap-2">
@@ -236,10 +242,10 @@ function ScheduleEditor({ master, onClose }: { master: Master; onClose: () => vo
             />
           </div>
         ))}
-        <button onClick={save} disabled={saving} className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium">
+        <button type="submit" disabled={saving} className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium">
           {saving ? 'Збереження...' : 'Зберегти розклад'}
         </button>
-      </div>
+      </form>
     </Modal>
   );
 }
