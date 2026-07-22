@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiGet, apiPost, SalonInfo, Service, Master } from './api';
-import { t, getLang } from './i18n/translations';
+import {
+  Lang,
+  detectLang,
+  persistLang,
+  translate,
+  TranslationKey,
+} from './i18n/translations';
 
 type Step = 'services' | 'masters' | 'slots' | 'confirm' | 'success';
 
@@ -11,6 +17,8 @@ interface Selection {
   date: string;
   time: string;
 }
+
+const STEPS: Step[] = ['services', 'masters', 'slots', 'confirm'];
 
 function getSalonId(): string {
   const params = new URLSearchParams(window.location.search);
@@ -28,8 +36,21 @@ function addMinutes(time: string, minutes: number): string {
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
+function serviceName(service: Service, lang: Lang): string {
+  return lang === 'uk' ? service.name_uk : (service.name_en ?? service.name_uk);
+}
+
 export default function App() {
   const salonId = getSalonId();
+  const [lang, setLang] = useState<Lang>(() => detectLang());
   const [step, setStep] = useState<Step>('services');
   const [salon, setSalon] = useState<SalonInfo | null>(null);
   const [services, setServices] = useState<Service[]>([]);
@@ -48,22 +69,30 @@ export default function App() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const lang = getLang();
+  const t = useCallback((key: TranslationKey) => translate(lang, key), [lang]);
   const locale = lang === 'uk' ? 'uk-UA' : 'en-US';
   const initData = window.Telegram?.WebApp?.initData ?? '';
   const salonName = lang === 'uk' ? salon?.name_uk : (salon?.name_en ?? salon?.name_uk);
   const dates = useMemo(() => Object.keys(slots), [slots]);
   const canBook = Boolean(name.trim() && phone.trim() && selection.service && selection.date && selection.time);
+  const stepIndex = STEPS.indexOf(step === 'success' ? 'confirm' : step);
 
   useEffect(() => {
     const tg = window.Telegram?.WebApp;
     if (tg) {
       tg.ready();
       tg.expand();
+      tg.setHeaderColor?.('#f3efe9');
+      tg.setBackgroundColor?.('#f3efe9');
       const user = tg.initDataUnsafe.user;
       if (user?.first_name) setName(user.first_name);
     }
   }, []);
+
+  useEffect(() => {
+    document.documentElement.lang = lang;
+    persistLang(lang);
+  }, [lang]);
 
   useEffect(() => {
     if (!salonId) return;
@@ -96,18 +125,19 @@ export default function App() {
     if (!tg) return;
 
     if (step === 'confirm') {
-      tg.MainButton.setText?.(t('book'));
-      if (!tg.MainButton.setText) tg.MainButton.text = t('book');
+      if (tg.MainButton.setText) tg.MainButton.setText(t('book'));
+      else tg.MainButton.text = t('book');
       if (canBook && !loading) tg.MainButton.enable?.();
       else tg.MainButton.disable?.();
       tg.MainButton.show();
-      const handler = () => handleBook();
+      const handler = () => {
+        void handleBook();
+      };
       tg.MainButton.onClick(handler);
       return () => tg.MainButton.offClick(handler);
-    } else {
-      tg.MainButton.hide();
     }
-  }, [canBook, loading, step, name, phone, selection]);
+    tg.MainButton.hide();
+  }, [canBook, loading, step, name, phone, selection, t]);
 
   async function selectService(service: Service) {
     setLoading(true);
@@ -208,182 +238,269 @@ export default function App() {
   }
 
   if (!salonId) {
-    return <div className="p-4">Salon ID missing</div>;
+    return (
+      <div className="app-shell">
+        <div className="empty">{t('missingSalon')}</div>
+      </div>
+    );
   }
 
+  const progressLabels = [t('stepService'), t('stepMaster'), t('stepTime'), t('stepConfirm')];
+
   return (
-    <div className="p-4 max-w-md mx-auto slide-in">
-      {step !== 'success' && salon && (
-        <header className="mb-6">
-          <h1 className="text-xl font-bold">{salonName}</h1>
-          {salon.address && <p className="text-sm opacity-70">{salon.address}</p>}
-        </header>
+    <div className="app-shell">
+      {step !== 'success' && (
+        <>
+          <header className="topbar">
+            <div className="brand-block">
+              <div className="eyebrow">{t('bookOnline')}</div>
+              <h1 className="brand-title">{salonName || 'Salon'}</h1>
+              {salon?.address && (
+                <div className="address-row">
+                  <span className="address-pin">📍</span>
+                  <span>{salon.address}</span>
+                </div>
+              )}
+            </div>
+            <div className="lang-switch" role="group" aria-label="Language">
+              <button
+                type="button"
+                className={lang === 'uk' ? 'active' : ''}
+                onClick={() => setLang('uk')}
+              >
+                UA
+              </button>
+              <button
+                type="button"
+                className={lang === 'en' ? 'active' : ''}
+                onClick={() => setLang('en')}
+              >
+                EN
+              </button>
+            </div>
+          </header>
+
+          <nav className="progress" aria-label="Progress">
+            {progressLabels.map((label, index) => {
+              const state = index < stepIndex ? 'done' : index === stepIndex ? 'current' : '';
+              return (
+                <div className={`progress-item ${state}`} key={label}>
+                  <div className="progress-bar"><span /></div>
+                  <div className="progress-label">{label}</div>
+                </div>
+              );
+            })}
+          </nav>
+        </>
       )}
 
-      {error && <div className="mb-4 p-3 rounded-lg bg-red-100 text-red-800 text-sm">{error}</div>}
-      {loading && step !== 'confirm' && (
-        <div className="mb-4 p-3 rounded-lg card text-sm opacity-80">{t('loading')}</div>
-      )}
+      {error && <div className="alert">{error}</div>}
+      {loading && step !== 'confirm' && <div className="loading-banner">{t('loading')}</div>}
 
       {step === 'services' && (
-        <div>
-          <h2 className="text-lg font-semibold mb-4">{t('chooseService')}</h2>
-          {!services.length && !loading && <p className="opacity-70">{t('noServices')}</p>}
-          <div className="space-y-3">
+        <section className="step-pane">
+          <h2 className="section-title">{t('chooseService')}</h2>
+          {!services.length && !loading && <div className="empty">{t('noServices')}</div>}
+          <div className="stack">
             {services.map((s) => (
               <button
                 key={s.id}
-                onClick={() => selectService(s)}
+                type="button"
+                onClick={() => void selectService(s)}
                 disabled={loading}
-                className="card w-full p-4 text-left active:opacity-80"
+                className="choice-card"
               >
-                <div className="font-medium">
-                  {lang === 'uk' ? s.name_uk : (s.name_en ?? s.name_uk)}
+                <div className="choice-top">
+                  <div className="choice-name">{serviceName(s, lang)}</div>
                 </div>
-                <div className="text-sm opacity-70 mt-1">
-                  {s.duration_minutes} {t('min')}
-                  {s.price ? ` • ${s.price} ₴` : ''}
+                <div className="choice-meta">
+                  <span className="chip">{s.duration_minutes} {t('min')}</span>
+                  {s.price != null && <span className="chip price">{s.price} {t('uah')}</span>}
                 </div>
               </button>
             ))}
           </div>
-        </div>
+        </section>
       )}
 
       {step === 'masters' && (
-        <div>
-          <h2 className="text-lg font-semibold mb-4">{t('chooseMaster')}</h2>
-          {!masters.length && !loading && <p className="opacity-70">{t('noMasters')}</p>}
-          <div className="space-y-3">
+        <section className="step-pane">
+          <h2 className="section-title">{t('chooseMaster')}</h2>
+          {!masters.length && !loading && <div className="empty">{t('noMasters')}</div>}
+          <div className="stack">
             {masters.map((m) => (
               <button
                 key={m.id}
-                onClick={() => selectMaster(m)}
+                type="button"
+                onClick={() => void selectMaster(m)}
                 disabled={loading}
-                className="card w-full p-4 text-left flex items-center gap-3 active:opacity-80"
+                className="choice-card master-card"
               >
-                {m.photo_url ? (
-                  <img src={m.photo_url} alt="" className="w-12 h-12 rounded-full object-cover" />
-                ) : (
-                  <div className="w-12 h-12 rounded-full bg-gray-300 flex items-center justify-center text-lg">
-                    👤
-                  </div>
-                )}
+                <div className="avatar">
+                  {m.photo_url ? <img src={m.photo_url} alt="" /> : initials(m.name)}
+                </div>
                 <div>
-                  <div className="font-medium">{m.name}</div>
-                  {m.position && <div className="text-sm opacity-70">{m.position}</div>}
+                  <div className="master-name">{m.name}</div>
+                  {m.position && <div className="master-role">{m.position}</div>}
                 </div>
               </button>
             ))}
             <button
-              onClick={() => selectMaster(null, true)}
+              type="button"
+              onClick={() => void selectMaster(null, true)}
               disabled={loading}
-              className="card w-full p-4 text-left active:opacity-80"
+              className="choice-card any-card"
             >
-              {t('anyMaster')}
+              <div className="choice-name">{t('anyMaster')}</div>
+              <p className="hint" style={{ marginTop: 6 }}>{t('anyMasterHint')}</p>
             </button>
           </div>
-        </div>
+        </section>
       )}
 
       {step === 'slots' && (
-        <div>
-          <h2 className="text-lg font-semibold mb-4">{t('chooseTime')}</h2>
-          {!dates.length && !loading && <p className="opacity-70">{t('noSlots')}</p>}
-          <div className="flex gap-2 overflow-x-auto pb-3 mb-4">
+        <section className="step-pane">
+          <h2 className="section-title">{t('chooseTime')}</h2>
+          {!dates.length && !loading && <div className="empty">{t('noSlots')}</div>}
+          <div className="date-row">
             {dates.map((date) => (
               <button
                 key={date}
+                type="button"
                 onClick={() => setSelectedDate(date)}
-                className={`slot-btn whitespace-nowrap ${selectedDate === date ? 'selected' : ''}`}
+                className={`date-chip ${selectedDate === date ? 'active' : ''}`}
               >
-                {formatDate(date, locale, {
-                  weekday: 'short',
-                  day: 'numeric',
-                  month: 'short',
-                })}
+                <span className="dow">
+                  {formatDate(date, locale, { weekday: 'short' })}
+                </span>
+                <span className="dom">
+                  {formatDate(date, locale, { day: 'numeric', month: 'short' })}
+                </span>
               </button>
             ))}
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="time-grid">
             {(slots[selectedDate] ?? []).map((time) => (
-              <button key={time} onClick={() => selectSlot(selectedDate, time)} className="slot-btn">
+              <button
+                key={time}
+                type="button"
+                onClick={() => selectSlot(selectedDate, time)}
+                className="time-chip"
+              >
                 {time}
               </button>
             ))}
           </div>
-        </div>
+        </section>
       )}
 
       {step === 'confirm' && selection.service && (
-        <div>
-          <h2 className="text-lg font-semibold mb-4">{t('yourBooking')}</h2>
-          <div className="card p-4 space-y-3 mb-6">
-            <div>
-              ✂️ {lang === 'uk' ? selection.service.name_uk : (selection.service.name_en ?? selection.service.name_uk)}
-              <div className="text-sm opacity-70">{selection.service.duration_minutes} {t('min')}</div>
+        <section className="step-pane">
+          <h2 className="section-title">{t('yourBooking')}</h2>
+          <div className="summary-card">
+            <div className="summary-row">
+              <span className="summary-label">{t('service')}</span>
+              <span className="summary-value">{serviceName(selection.service, lang)}</span>
             </div>
-            {selection.master && <div>👤 {selection.master.name}</div>}
-            {selection.anyMaster && <div>👤 {t('anyMaster')}</div>}
-            <div>
-              📅 {formatDate(selection.date, locale, {
-                weekday: 'long',
-                day: 'numeric',
-                month: 'long',
-              })}
+            <div className="summary-row">
+              <span className="summary-label">{t('specialist')}</span>
+              <span className="summary-value">
+                {selection.anyMaster ? t('anyMaster') : selection.master?.name}
+              </span>
             </div>
-            <div>
-              🕐 {selection.time} — {addMinutes(selection.time, selection.service.duration_minutes)}
+            <div className="summary-row">
+              <span className="summary-label">{t('when')}</span>
+              <span className="summary-value">
+                {formatDate(selection.date, locale, {
+                  weekday: 'short',
+                  day: 'numeric',
+                  month: 'long',
+                })}
+                <br />
+                {selection.time}–{addMinutes(selection.time, selection.service.duration_minutes)}
+              </span>
             </div>
-            {selection.service.price && <div>💰 {selection.service.price} ₴</div>}
+            <div className="summary-row">
+              <span className="summary-label">{t('duration')}</span>
+              <span className="summary-value">{selection.service.duration_minutes} {t('min')}</span>
+            </div>
+            {selection.service.price != null && (
+              <div className="summary-row">
+                <span className="summary-label">{t('price')}</span>
+                <span className="summary-value">{selection.service.price} {t('uah')}</span>
+              </div>
+            )}
+            {salon?.address && (
+              <div className="summary-row">
+                <span className="summary-label">{t('address')}</span>
+                <span className="summary-value">{salon.address}</span>
+              </div>
+            )}
           </div>
-          <label className="block mb-3">
-            <span className="text-sm">{t('name')} *</span>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full mt-1 p-3 rounded-lg border border-gray-200 bg-transparent"
-            />
+
+          <label className="field">
+            <span>{t('name')} *</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
           </label>
-          <label className="block mb-3">
-            <span className="text-sm">{t('phone')} *</span>
+          <label className="field">
+            <span>{t('phone')} *</span>
             <input
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              placeholder="+380..."
-              className="w-full mt-1 p-3 rounded-lg border border-gray-200 bg-transparent"
+              placeholder="+380…"
+              autoComplete="tel"
             />
           </label>
-          {loading && <p className="text-center opacity-70">{t('loading')}</p>}
-        </div>
+
+          <div className="actions">
+            <button
+              type="button"
+              className="primary-btn"
+              disabled={!canBook || loading}
+              onClick={() => void handleBook()}
+            >
+              {loading ? t('loading') : t('book')}
+            </button>
+          </div>
+        </section>
       )}
 
       {step === 'success' && (
-        <div className="text-center py-12">
-          <div className="text-5xl mb-4">✅</div>
-          <h2 className="text-xl font-bold mb-2">{t('success')}</h2>
-          <p className="opacity-70 mb-2">
-            {formatDate(selection.date, locale)} •{' '}
-            {selection.time}
-          </p>
-          <p className="text-sm opacity-60 mb-8">{t('reminder')}</p>
-          <button
-            onClick={() => window.Telegram?.WebApp?.close()}
-            className="card px-6 py-3 rounded-xl font-medium mr-2"
-          >
-            {t('myBookings')}
-          </button>
-          <button
-            onClick={() => {
-              setStep('services');
-              setSelection({ service: null, master: null, anyMaster: false, date: '', time: '' });
-            }}
-            className="btn-primary px-6 py-3 rounded-xl font-medium"
-          >
-            {t('home')}
-          </button>
-        </div>
+        <section className="success-wrap step-pane">
+          <div className="success-badge">✓</div>
+          <h2>{t('success')}</h2>
+          <p>{t('successHint')}</p>
+          <div className="success-meta">
+            {formatDate(selection.date, locale, { day: 'numeric', month: 'long' })} · {selection.time}
+          </div>
+          <p>{t('reminder')}</p>
+          {salon?.address && (
+            <div className="address-row" style={{ justifyContent: 'center', marginTop: 16 }}>
+              <span className="address-pin">📍</span>
+              <span>{salon.address}</span>
+            </div>
+          )}
+          <div className="actions" style={{ marginTop: 24 }}>
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={() => {
+                setStep('services');
+                setSelection({ service: null, master: null, anyMaster: false, date: '', time: '' });
+              }}
+            >
+              {t('home')}
+            </button>
+            <button
+              type="button"
+              className="ghost-btn"
+              onClick={() => window.Telegram?.WebApp?.close()}
+            >
+              {t('myBookings')}
+            </button>
+          </div>
+        </section>
       )}
     </div>
   );
