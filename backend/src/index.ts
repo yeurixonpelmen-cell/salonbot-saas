@@ -57,6 +57,10 @@ app.post('/webhook/:salonId', async (req, res) => {
 app.use('/api', apiRoutes);
 
 async function main() {
+  process.on('unhandledRejection', (reason) => {
+    console.error('Unhandled promise rejection:', reason);
+  });
+
   console.log('Starting SalonBot backend...');
   console.log('PORT:', PORT);
 

@@ -1,17 +1,39 @@
 import { Bot, Context } from 'grammy';
 import { supabase } from '../db/client';
 
+function normalizePublicUrl(raw: string | undefined, fallback: string): string {
+  const value = (raw ?? fallback).trim();
+  if (!value) return fallback;
+  if (/^https?:\/\//i.test(value)) return value.replace(/\/+$/, '');
+  return `https://${value.replace(/^\/+/, '').replace(/\/+$/, '')}`;
+}
+
 export function setupBotHandlers(bot: Bot, salonId: string): void {
-  const miniAppUrl = process.env.MINI_APP_URL ?? 'http://localhost:5173';
+  const miniAppBase = normalizePublicUrl(
+    process.env.MINI_APP_URL,
+    'http://localhost:5173'
+  );
+
+  bot.catch((err) => {
+    console.error(`Bot handler error (salon ${salonId}):`, err);
+  });
 
   bot.command('start', async (ctx) => {
-    await ctx.reply('Ласкаво просимо! Запишіться до нас онлайн:', {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '📅 Записатись', web_app: { url: `${miniAppUrl}?salon=${salonId}` } }],
-        ],
-      },
-    });
+    try {
+      const webAppUrl = `${miniAppBase}?salon=${salonId}`;
+      await ctx.reply('Ласкаво просимо! Запишіться до нас онлайн:', {
+        reply_markup: {
+          inline_keyboard: [[{ text: '📅 Записатись', web_app: { url: webAppUrl } }]],
+        },
+      });
+    } catch (err) {
+      console.error(`Failed /start reply (salon ${salonId}):`, err);
+      try {
+        await ctx.reply('Не вдалось відкрити запис онлайн. Спробуйте пізніше.');
+      } catch {
+        // Ignore secondary Telegram errors.
+      }
+    }
   });
 
   bot.command('mybookings', async (ctx) => {
