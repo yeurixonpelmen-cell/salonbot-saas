@@ -51,6 +51,11 @@ export function ClientDetailsPage() {
     try {
       await api.patch<Client>(`/api/admin/clients/${id}`, {
         ...form,
+        full_name: form.full_name.trim() || form.phone?.trim() || client.full_name,
+        phone: form.phone?.trim() || null,
+        email: form.email?.trim() || null,
+        date_of_birth: form.date_of_birth?.trim() || null,
+        general_notes: form.general_notes?.trim() || null,
         tags: tags.split(',').map((item) => item.trim()).filter(Boolean),
       });
       await load();
@@ -107,9 +112,9 @@ export function ClientDetailsPage() {
         <section className="content-card">
           <div className="section-heading"><div><h2>Основна інформація</h2><p>Контакти та внутрішні нотатки</p></div></div>
           <form className="form-grid" onSubmit={submit}>
-            <label className="full">Ім’я<input required value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></label>
-            <label>Телефон<input value={form.phone ?? ''} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></label>
-            <label>Email<input type="email" value={form.email ?? ''} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
+            <label className="full">Ім’я<input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} placeholder="Якщо відомо" /></label>
+            <label>Телефон<input value={form.phone ?? ''} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="Необов’язково" /></label>
+            <label>Email<input value={form.email ?? ''} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Необов’язково" /></label>
             <label>Дата народження<input type="date" value={form.date_of_birth ?? ''} onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })} /></label>
             <label>Теги<input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="через кому" /></label>
             <label className="full">Загальні нотатки<textarea rows={5} value={form.general_notes ?? ''} onChange={(e) => setForm({ ...form, general_notes: e.target.value })} /></label>

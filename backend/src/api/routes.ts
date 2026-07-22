@@ -693,8 +693,9 @@ router.post('/admin/clients', async (req: Request, res: Response) => {
     telegram_id,
   } = req.body;
   const name = (full_name ?? fullName)?.trim();
-  if (!name) {
-    res.status(400).json({ error: 'full_name is required' });
+  const normalizedPhone = normalizePhone(phone);
+  if (!name && !normalizedPhone) {
+    res.status(400).json({ error: 'Вкажіть ім’я або телефон' });
     return;
   }
   const { data, error } = await supabase
@@ -702,8 +703,8 @@ router.post('/admin/clients', async (req: Request, res: Response) => {
     .insert({
       salon_id: req.auth!.salon_id,
       telegram_id: telegram_id ?? null,
-      full_name: name,
-      phone: normalizePhone(phone),
+      full_name: name || normalizedPhone,
+      phone: normalizedPhone,
       email: email?.trim() || null,
       date_of_birth: date_of_birth ?? dateOfBirth ?? null,
       general_notes: general_notes ?? generalNotes ?? null,

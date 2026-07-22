@@ -78,10 +78,24 @@ function ClientForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    const fullName = form.full_name.trim();
+    const phone = form.phone?.trim() ?? '';
+    if (!fullName && !phone) {
+      setError('Вкажіть хоча б ім’я або телефон');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
-      await api.post<Client>('/api/admin/clients', { ...form, tags: tags.split(',').map((item) => item.trim()).filter(Boolean) });
+      await api.post<Client>('/api/admin/clients', {
+        ...form,
+        full_name: fullName || phone,
+        phone: phone || null,
+        email: form.email?.trim() || null,
+        date_of_birth: form.date_of_birth?.trim() || null,
+        general_notes: form.general_notes?.trim() || null,
+        tags: tags.split(',').map((item) => item.trim()).filter(Boolean),
+      });
       await onSaved();
     } catch (err) {
       setError((err as { error?: string }).error ?? 'Не вдалося створити клієнта');
@@ -94,11 +108,11 @@ function ClientForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
     <Modal title="Новий клієнт" onClose={onClose}>
       <form className="form-grid" onSubmit={submit}>
         {error && <div className="notice-error full">{error}</div>}
-        <label className="full">Ім’я<input required value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></label>
-        <label>Телефон<input value={form.phone ?? ''} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></label>
-        <label>Email<input type="email" value={form.email ?? ''} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
+        <label className="full">Ім’я<input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} placeholder="Якщо відомо" /></label>
+        <label>Телефон<input value={form.phone ?? ''} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="Необов’язково" /></label>
+        <label>Email<input value={form.email ?? ''} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Необов’язково" /></label>
         <label>Дата народження<input type="date" value={form.date_of_birth ?? ''} onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })} /></label>
-        <label>Теги<input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="VIP, постійний" /></label>
+        <label>Теги<input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="VIP, постійний (необов’язково)" /></label>
         <label className="full">Загальні нотатки<textarea rows={4} value={form.general_notes ?? ''} onChange={(e) => setForm({ ...form, general_notes: e.target.value })} /></label>
         <Button className="full" disabled={saving}>{saving ? 'Збереження…' : 'Створити клієнта'}</Button>
       </form>
