@@ -51,7 +51,7 @@ export function ClientDetailsPage() {
     try {
       await api.patch<Client>(`/api/admin/clients/${id}`, {
         ...form,
-        full_name: form.full_name.trim() || form.phone?.trim() || client.full_name,
+        full_name: form.full_name.trim() || form.phone?.trim() || client?.full_name || '',
         phone: form.phone?.trim() || null,
         email: form.email?.trim() || null,
         date_of_birth: form.date_of_birth?.trim() || null,
