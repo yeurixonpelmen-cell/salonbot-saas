@@ -50,3 +50,41 @@ export async function telegramInitDataMiddleware(
   req.telegramUser = telegramUser;
   next();
 }
+
+/** Accept Telegram initData when present; otherwise continue as public web booking. */
+export async function optionalTelegramInitDataMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const initData = req.headers['x-telegram-init-data'] as string | undefined;
+  if (!initData) {
+    next();
+    return;
+  }
+
+  const salonId =
+    (req.params.salonId as string) ||
+    (req.body?.salonId as string) ||
+    (req.query.salonId as string);
+
+  if (!salonId) {
+    res.status(400).json({ error: 'salonId required' });
+    return;
+  }
+
+  const botToken = await getSalonBotToken(salonId);
+  if (!botToken || !validateTelegramData(initData, botToken)) {
+    res.status(401).json({ error: 'Invalid Telegram data' });
+    return;
+  }
+
+  const telegramUser = getTelegramUserFromInitData(initData);
+  if (!telegramUser?.id) {
+    res.status(401).json({ error: 'Invalid Telegram data' });
+    return;
+  }
+
+  req.telegramUser = telegramUser;
+  next();
+}

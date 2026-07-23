@@ -3,7 +3,7 @@ import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import { supabase } from '../db/client';
 import { authMiddleware } from '../middleware/auth';
-import { telegramInitDataMiddleware } from '../middleware/telegramInitData';
+import { optionalTelegramInitDataMiddleware } from '../middleware/telegramInitData';
 import { validateTelegramLoginWidget, isBookingConflictError } from '../utils/telegram';
 import { signJwt, signSalonSelectionJwt, verifySalonSelectionJwt } from '../utils/jwt';
 import { encryptBotToken } from '../utils/salon';
@@ -260,28 +260,34 @@ router.get('/salons/:salonId/masters', async (req: Request, res: Response) => {
   res.json(data ?? []);
 });
 
-router.get(
-  '/salons/:salonId/slots',
-  telegramInitDataMiddleware,
-  async (req: Request, res: Response) => {
-    const masterId = (req.query.masterId as string) || null;
-    const serviceId = req.query.serviceId as string;
-    if (!serviceId) {
-      res.status(400).json({ error: 'serviceId required' });
-      return;
-    }
-
-    const slots = await generateSlots(req.params.salonId, masterId, serviceId);
-    res.json(slots);
+router.get('/salons/:salonId/slots', async (req: Request, res: Response) => {
+  const masterId = (req.query.masterId as string) || null;
+  const serviceId = req.query.serviceId as string;
+  if (!serviceId) {
+    res.status(400).json({ error: 'serviceId required' });
+    return;
   }
-);
 
-router.post('/bookings', bookingLimiter, telegramInitDataMiddleware, async (req: Request, res: Response) => {
+  const slots = await generateSlots(req.params.salonId, masterId, serviceId);
+  res.json(slots);
+});
+
+router.post(
+  '/bookings',
+  bookingLimiter,
+  optionalTelegramInitDataMiddleware,
+  async (req: Request, res: Response) => {
   let { salonId, masterId, serviceId, clientName, clientPhone, datetime } = req.body;
-  const clientTelegramId = req.telegramUser!.id;
+  const clientTelegramId = req.telegramUser?.id ?? null;
+  const phone = normalizePhone(clientPhone);
 
   if (!salonId || !serviceId || !clientName || !datetime) {
     res.status(400).json({ error: 'Missing required fields' });
+    return;
+  }
+
+  if (!clientTelegramId && !phone) {
+    res.status(400).json({ error: 'Вкажіть телефон для запису' });
     return;
   }
 
@@ -310,7 +316,7 @@ router.post('/bookings', bookingLimiter, telegramInitDataMiddleware, async (req:
 
   const client = await resolveClient(salonId, {
     clientName,
-    clientPhone,
+    clientPhone: phone,
     telegramId: clientTelegramId,
   });
 
@@ -322,7 +328,7 @@ router.post('/bookings', bookingLimiter, telegramInitDataMiddleware, async (req:
       service_id: serviceId,
       client_telegram_id: clientTelegramId,
       client_name: clientName,
-      client_phone: clientPhone ?? null,
+      client_phone: phone,
       client_id: client?.id ?? null,
       booking_datetime: datetime,
       duration_minutes: service.duration_minutes,
@@ -348,7 +354,7 @@ router.post('/bookings', bookingLimiter, telegramInitDataMiddleware, async (req:
     booking.id,
     clientTelegramId,
     clientName,
-    clientPhone ?? null,
+    phone,
     datetime,
     service.name_uk,
     master?.name ?? '',

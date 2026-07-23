@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { apiGet, apiPost, SalonInfo, Service, Master } from './api';
+import { apiGet, apiPost, SalonInfo, Service, Master, isTelegramWebApp } from './api';
 import {
   Lang,
   detectLang,
@@ -71,7 +71,7 @@ export default function App() {
 
   const t = useCallback((key: TranslationKey) => translate(lang, key), [lang]);
   const locale = lang === 'uk' ? 'uk-UA' : 'en-US';
-  const initData = window.Telegram?.WebApp?.initData ?? '';
+  const inTelegram = isTelegramWebApp();
   const salonName = lang === 'uk' ? salon?.name_uk : (salon?.name_en ?? salon?.name_uk);
   const dates = useMemo(() => Object.keys(slots), [slots]);
   const canBook = Boolean(name.trim() && phone.trim() && selection.service && selection.date && selection.time);
@@ -156,10 +156,6 @@ export default function App() {
 
   async function selectMaster(master: Master | null, anyMaster = false) {
     if (!selection.service) return;
-    if (!initData) {
-      setError(t('openInTelegram'));
-      return;
-    }
 
     setLoading(true);
     setError('');
@@ -185,13 +181,18 @@ export default function App() {
     setStep('confirm');
   }
 
+  function phoneLooksValid(value: string): boolean {
+    const digits = value.replace(/\D/g, '');
+    return digits.length >= 10;
+  }
+
   async function handleBook() {
     if (!canBook) {
       setError(t('requiredFields'));
       return;
     }
-    if (!initData) {
-      setError(t('openInTelegram'));
+    if (!phoneLooksValid(phone)) {
+      setError(t('invalidPhone'));
       return;
     }
 
@@ -261,6 +262,7 @@ export default function App() {
                   <span>{salon.address}</span>
                 </div>
               )}
+              {!inTelegram && <p className="hint" style={{ marginTop: 10 }}>{t('webBookingNote')}</p>}
             </div>
             <div className="lang-switch" role="group" aria-label="Language">
               <button
@@ -470,7 +472,7 @@ export default function App() {
         <section className="success-wrap step-pane">
           <div className="success-badge">✓</div>
           <h2>{t('success')}</h2>
-          <p>{t('successHint')}</p>
+          <p>{inTelegram ? t('successHintTelegram') : t('successHint')}</p>
           <div className="success-meta">
             {formatDate(selection.date, locale, { day: 'numeric', month: 'long' })} · {selection.time}
           </div>
@@ -492,13 +494,15 @@ export default function App() {
             >
               {t('home')}
             </button>
-            <button
-              type="button"
-              className="ghost-btn"
-              onClick={() => window.Telegram?.WebApp?.close()}
-            >
-              {t('myBookings')}
-            </button>
+            {inTelegram ? (
+              <button
+                type="button"
+                className="ghost-btn"
+                onClick={() => window.Telegram?.WebApp?.close()}
+              >
+                {t('myBookings')}
+              </button>
+            ) : null}
           </div>
         </section>
       )}

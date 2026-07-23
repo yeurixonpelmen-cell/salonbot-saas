@@ -4,7 +4,7 @@ import { botManager } from './BotManager';
 export async function sendBookingNotifications(
   salonId: string,
   bookingId: string,
-  clientTelegramId: number,
+  clientTelegramId: number | null,
   clientName: string,
   clientPhone: string | null,
   datetime: string,
@@ -21,15 +21,21 @@ export async function sendBookingNotifications(
   const dt = new Date(datetime);
   const formatted = dt.toLocaleString('uk-UA');
 
-  await bot.api.sendMessage(
-    clientTelegramId,
-    `✅ Запис підтверджено!\n📅 ${formatted}\n✂️ ${serviceName}\n👤 Майстер: ${masterName}\n📍 ${salonAddress}`,
-    {
-      reply_markup: {
-        inline_keyboard: [[{ text: '❌ Скасувати запис', callback_data: `cancel_${bookingId}` }]],
-      },
+  if (clientTelegramId) {
+    try {
+      await bot.api.sendMessage(
+        clientTelegramId,
+        `✅ Запис підтверджено!\n📅 ${formatted}\n✂️ ${serviceName}\n👤 Майстер: ${masterName}\n📍 ${salonAddress}`,
+        {
+          reply_markup: {
+            inline_keyboard: [[{ text: '❌ Скасувати запис', callback_data: `cancel_${bookingId}` }]],
+          },
+        }
+      );
+    } catch (err) {
+      console.error(`Client booking notification failed for ${bookingId}:`, err);
     }
-  );
+  }
 
   const { data: salon } = await supabase
     .from('salons')
@@ -39,9 +45,10 @@ export async function sendBookingNotifications(
 
   if (!salon?.admin_chat_id) return;
 
+  const source = clientTelegramId ? 'Telegram' : 'Сайт / Viber / Instagram';
   await bot.api.sendMessage(
     salon.admin_chat_id,
-    `📅 НОВИЙ ЗАПИС\n👤 ${clientName} | 📞 ${clientPhone ?? '—'}\n✂️ ${serviceName} — ${masterName}\n🕐 ${formatted}`,
+    `📅 НОВИЙ ЗАПИС (${source})\n👤 ${clientName} | 📞 ${clientPhone ?? '—'}\n✂️ ${serviceName} — ${masterName}\n🕐 ${formatted}`,
     {
       reply_markup: {
         inline_keyboard: [

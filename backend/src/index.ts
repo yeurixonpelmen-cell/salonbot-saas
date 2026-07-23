@@ -17,11 +17,26 @@ const allowedOrigins = [
   process.env.ADMIN_URL,
   'http://localhost:5173',
   'http://localhost:5174',
+  'https://salonbot-mini-app-production.up.railway.app',
 ].filter(Boolean) as string[];
 
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin(origin, callback) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      const normalized = origin.replace(/\/$/, '');
+      if (
+        allowedOrigins.some((item) => item.replace(/\/$/, '') === normalized) ||
+        /\.up\.railway\.app$/i.test(new URL(origin).hostname)
+      ) {
+        callback(null, true);
+        return;
+      }
+      callback(null, false);
+    },
     credentials: true,
   })
 );

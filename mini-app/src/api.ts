@@ -8,10 +8,14 @@ function getInitData(): string {
   return window.Telegram?.WebApp?.initData ?? '';
 }
 
+export function isTelegramWebApp(): boolean {
+  return Boolean(window.Telegram?.WebApp?.initData);
+}
+
 export async function apiGet<T>(path: string): Promise<T> {
   const headers: Record<string, string> = {};
   const initData = getInitData();
-  if (initData && path.includes('/slots')) {
+  if (initData) {
     headers['X-Telegram-Init-Data'] = initData;
   }
   const res = await fetch(`${API_URL}${path}`, { headers });
@@ -23,12 +27,16 @@ export async function apiGet<T>(path: string): Promise<T> {
 }
 
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  const initData = getInitData();
+  if (initData) {
+    headers['X-Telegram-Init-Data'] = initData;
+  }
   const res = await fetch(`${API_URL}${path}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Telegram-Init-Data': getInitData(),
-    },
+    headers,
     body: JSON.stringify(body),
   });
   if (!res.ok) {

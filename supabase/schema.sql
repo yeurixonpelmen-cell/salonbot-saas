@@ -79,7 +79,7 @@ CREATE TABLE bookings (
   salon_id UUID REFERENCES salons(id),
   master_id UUID REFERENCES masters(id),
   service_id UUID REFERENCES services(id),
-  client_telegram_id BIGINT NOT NULL,
+  client_telegram_id BIGINT,
   client_name TEXT NOT NULL,
   client_phone TEXT,
   client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
