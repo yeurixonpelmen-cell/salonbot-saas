@@ -15,6 +15,9 @@ CREATE TABLE salons (
   owner_telegram_id BIGINT NOT NULL,
   timezone TEXT NOT NULL DEFAULT 'Europe/Kyiv',
   is_active BOOLEAN DEFAULT true,
+  reminders_enabled BOOLEAN NOT NULL DEFAULT true,
+  review_request_enabled BOOLEAN NOT NULL DEFAULT false,
+  google_maps_url TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -91,6 +94,7 @@ CREATE TABLE bookings (
   notes TEXT,
   reminder_24h_sent BOOLEAN DEFAULT false,
   reminder_2h_sent BOOLEAN DEFAULT false,
+  review_request_sent BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE (client_telegram_id, master_id, booking_datetime)

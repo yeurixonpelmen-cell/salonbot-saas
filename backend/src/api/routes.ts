@@ -588,7 +588,9 @@ router.use('/admin', adminLimiter, authMiddleware);
 router.get('/admin/salon', async (req: Request, res: Response) => {
   const { data } = await supabase
     .from('salons')
-    .select('id, name_uk, name_en, address, logo_url, bot_username, admin_chat_id')
+    .select(
+      'id, name_uk, name_en, address, logo_url, bot_username, admin_chat_id, reminders_enabled, review_request_enabled, google_maps_url'
+    )
     .eq('id', req.auth!.salon_id)
     .single();
 
@@ -596,12 +598,44 @@ router.get('/admin/salon', async (req: Request, res: Response) => {
 });
 
 router.patch('/admin/salon', async (req: Request, res: Response) => {
-  const { name_uk, name_en, address, logo_url, admin_chat_id } = req.body;
+  const {
+    name_uk,
+    name_en,
+    address,
+    logo_url,
+    admin_chat_id,
+    reminders_enabled,
+    review_request_enabled,
+    google_maps_url,
+  } = req.body;
+
+  const update: Record<string, unknown> = {
+    name_uk,
+    name_en,
+    address,
+    logo_url,
+    admin_chat_id,
+  };
+  if (typeof reminders_enabled === 'boolean') update.reminders_enabled = reminders_enabled;
+  if (typeof review_request_enabled === 'boolean') {
+    update.review_request_enabled = review_request_enabled;
+  }
+  if (google_maps_url !== undefined) {
+    const raw = typeof google_maps_url === 'string' ? google_maps_url.trim() : '';
+    if (raw && !/^https?:\/\//i.test(raw)) {
+      res.status(400).json({ error: 'Посилання Google Maps має починатись з https://' });
+      return;
+    }
+    update.google_maps_url = raw || null;
+  }
+
   const { data, error } = await supabase
     .from('salons')
-    .update({ name_uk, name_en, address, logo_url, admin_chat_id })
+    .update(update)
     .eq('id', req.auth!.salon_id)
-    .select()
+    .select(
+      'id, name_uk, name_en, address, logo_url, bot_username, admin_chat_id, reminders_enabled, review_request_enabled, google_maps_url'
+    )
     .single();
 
   if (error) {

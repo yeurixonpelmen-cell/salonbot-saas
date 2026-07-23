@@ -34,6 +34,9 @@ export function SettingsPage() {
         address: settings.address,
         logo_url: settings.logo_url,
         admin_chat_id: settings.admin_chat_id,
+        reminders_enabled: settings.reminders_enabled ?? true,
+        review_request_enabled: settings.review_request_enabled ?? false,
+        google_maps_url: settings.google_maps_url ?? null,
       });
       setSettings(saved);
       setMessage('Налаштування збережено');
@@ -130,6 +133,55 @@ export function SettingsPage() {
           </p>
         </div>
 
+        <div className="border-t pt-4 space-y-4">
+          <div>
+            <h2 className="font-semibold">Автоповідомлення клієнтам</h2>
+            <p className="text-sm text-gray-500 mt-1">Увімкніть те, що потрібно саме вашому салону</p>
+          </div>
+
+          <label className="flex items-start gap-3 rounded-xl border p-3 cursor-pointer hover:bg-gray-50">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={settings.reminders_enabled ?? true}
+              onChange={(e) => setSettings({ ...settings, reminders_enabled: e.target.checked })}
+            />
+            <span>
+              <span className="font-medium block">Нагадування про запис</span>
+              <span className="text-sm text-gray-500">Бот напише клієнту за 24 години і за 2 години до візиту</span>
+            </span>
+          </label>
+
+          <label className="flex items-start gap-3 rounded-xl border p-3 cursor-pointer hover:bg-gray-50">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={settings.review_request_enabled ?? false}
+              onChange={(e) => setSettings({ ...settings, review_request_enabled: e.target.checked })}
+            />
+            <span>
+              <span className="font-medium block">Прохання залишити відгук</span>
+              <span className="text-sm text-gray-500">
+                Через ~1–4 години після закінчення візиту бот надішле посилання на Google Maps
+              </span>
+            </span>
+          </label>
+
+          {(settings.review_request_enabled ?? false) && (
+            <div>
+              <Input
+                label="Посилання Google Maps / відгук *"
+                value={settings.google_maps_url ?? ''}
+                onChange={(google_maps_url) => setSettings({ ...settings, google_maps_url })}
+                placeholder="https://maps.google.com/..."
+              />
+              <p className="text-sm text-gray-500 mt-1">
+                Відкрийте свій заклад у Google Maps → «Поділитися» або «Написати відгук» → скопіюйте посилання.
+              </p>
+            </div>
+          )}
+        </div>
+
         <button type="submit" disabled={saving} className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium">
           {saving ? 'Збереження...' : 'Зберегти налаштування'}
         </button>
@@ -144,12 +196,14 @@ function Input({
   onChange,
   required,
   disabled,
+  placeholder,
 }: {
   label: string;
   value: string;
   onChange?: (value: string) => void;
   required?: boolean;
   disabled?: boolean;
+  placeholder?: string;
 }) {
   return (
     <label className="block">
@@ -159,6 +213,7 @@ function Input({
         onChange={(e) => onChange?.(e.target.value)}
         required={required}
         disabled={disabled}
+        placeholder={placeholder}
         className="w-full border rounded-lg p-3 mt-1 disabled:bg-gray-50"
       />
     </label>

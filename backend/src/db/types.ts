@@ -9,6 +9,9 @@ export interface Salon {
   owner_telegram_id: number;
   timezone: string;
   is_active: boolean;
+  reminders_enabled?: boolean;
+  review_request_enabled?: boolean;
+  google_maps_url?: string | null;
   created_at: string;
 }
 

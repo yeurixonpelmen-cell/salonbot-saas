@@ -191,6 +191,9 @@ export interface SalonSettings {
   logo_url: string | null;
   bot_username: string | null;
   admin_chat_id: string | null;
+  reminders_enabled?: boolean;
+  review_request_enabled?: boolean;
+  google_maps_url?: string | null;
 }
 
 export const GRID_SLOT_MINUTES = 30;
