@@ -114,6 +114,7 @@ export interface ClientPayload {
   phone?: string | null;
   email?: string | null;
   date_of_birth?: string | null;
+  telegram_id?: number | null;
   tags?: string[];
   general_notes?: string | null;
 }

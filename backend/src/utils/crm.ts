@@ -15,6 +15,17 @@ export function normalizePhone(value: unknown): string | null {
   return digits ? `${prefix}${digits}` : null;
 }
 
+export function clientInitials(fullName: unknown): string {
+  if (typeof fullName !== 'string') return '';
+  return fullName
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
 export function intervalsOverlap(
   start: number,
   end: number,

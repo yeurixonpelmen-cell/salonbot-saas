@@ -100,6 +100,7 @@ h1 { margin: 2px 0 3px; font-size: 28px; line-height: 1.2; letter-spacing: -.03e
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .form-grid label { display: grid; align-content: start; gap: 5px; color: #667085; font-size: 11px; font-weight: 600; }
 .form-grid .full { grid-column: 1 / -1; }
+.form-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .attention-check { display: flex !important; flex-direction: row; align-items: center; font-size: 13px !important; }
 .attention-check input { width: auto; min-height: auto; accent-color: #3569dc; }
 .client-summary { display: flex; gap: 13px; align-items: center; margin-bottom: 20px; padding: 14px; border-radius: 10px; background: #f6f8fc; }

@@ -7,7 +7,7 @@ import { telegramInitDataMiddleware } from '../middleware/telegramInitData';
 import { validateTelegramLoginWidget, isBookingConflictError } from '../utils/telegram';
 import { signJwt, signSalonSelectionJwt, verifySalonSelectionJwt } from '../utils/jwt';
 import { encryptBotToken } from '../utils/salon';
-import { hasBookingConflict, normalizePhone } from '../utils/crm';
+import { hasBookingConflict, normalizePhone, clientInitials } from '../utils/crm';
 import {
   generateSlots,
   findAvailableMaster,
@@ -674,6 +674,7 @@ router.get('/admin/clients', async (req: Request, res: Response) => {
   }
   res.json(clients.map((client) => ({
     ...client,
+    initials: clientInitials(client.full_name),
     visits_count: stats.get(client.id)?.count ?? 0,
     last_visit_at: stats.get(client.id)?.last ?? null,
   })));
@@ -745,7 +746,13 @@ router.get('/admin/clients/:id', async (req: Request, res: Response) => {
       .eq('client_id', client.id)
       .order('created_at', { ascending: false }),
   ]);
-  res.json({ ...client, bookings: withConflictFlags(bookings ?? []), files: files ?? [] });
+  res.json({
+    ...client,
+    initials: clientInitials(client.full_name),
+    visits_count: (bookings ?? []).filter((b) => b.status !== 'cancelled').length,
+    bookings: withConflictFlags(bookings ?? []),
+    files: files ?? [],
+  });
 });
 
 router.patch('/admin/clients/:id', async (req: Request, res: Response) => {
@@ -766,6 +773,14 @@ router.patch('/admin/clients/:id', async (req: Request, res: Response) => {
   if (req.body.dateOfBirth !== undefined) update.date_of_birth = req.body.dateOfBirth;
   if (req.body.generalNotes !== undefined) update.general_notes = req.body.generalNotes;
   if (update.phone !== undefined) update.phone = normalizePhone(update.phone);
+  if (update.telegram_id !== undefined) {
+    const raw = update.telegram_id;
+    if (raw === '' || raw === null) update.telegram_id = null;
+    else {
+      const parsed = Number(raw);
+      update.telegram_id = Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    }
+  }
   if (!Object.keys(update).length) {
     res.status(400).json({ error: 'No supported fields to update' });
     return;
@@ -785,7 +800,52 @@ router.patch('/admin/clients/:id', async (req: Request, res: Response) => {
     res.status(404).json({ error: 'Client not found' });
     return;
   }
-  res.json(data);
+  res.json({ ...data, initials: clientInitials(data.full_name) });
+});
+
+router.delete('/admin/clients/:id', async (req: Request, res: Response) => {
+  const salonId = req.auth!.salon_id;
+  const clientId = req.params.id;
+  const { data: existing } = await supabase
+    .from('clients')
+    .select('id')
+    .eq('id', clientId)
+    .eq('salon_id', salonId)
+    .maybeSingle();
+  if (!existing) {
+    res.status(404).json({ error: 'Client not found' });
+    return;
+  }
+
+  const { data: files } = await supabase
+    .from('client_files')
+    .select('id, storage_path')
+    .eq('salon_id', salonId)
+    .eq('client_id', clientId);
+
+  for (const file of files ?? []) {
+    if (file.storage_path) {
+      await supabase.storage.from('client-files').remove([file.storage_path]);
+    }
+  }
+  if ((files ?? []).length) {
+    await supabase
+      .from('client_files')
+      .delete()
+      .eq('salon_id', salonId)
+      .eq('client_id', clientId);
+  }
+
+  const { error } = await supabase
+    .from('clients')
+    .delete()
+    .eq('id', clientId)
+    .eq('salon_id', salonId);
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+  res.json({ ok: true });
 });
 
 router.post(

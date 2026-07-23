@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   ConflictBooking,
+  clientInitials,
   hasBookingConflict,
   intervalsOverlap,
   normalizePhone,
@@ -29,6 +30,14 @@ describe('normalizePhone', () => {
     assert.equal(normalizePhone(''), null);
     assert.equal(normalizePhone('call me'), null);
     assert.equal(normalizePhone(380671234567), null);
+  });
+});
+
+describe('clientInitials', () => {
+  it('builds two-letter initials from a full name', () => {
+    assert.equal(clientInitials('Анна Коваленко'), 'АК');
+    assert.equal(clientInitials('  Марія  '), 'М');
+    assert.equal(clientInitials(''), '');
   });
 });
 
