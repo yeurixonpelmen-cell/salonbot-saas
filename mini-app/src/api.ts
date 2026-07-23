@@ -61,9 +61,17 @@ export interface Service {
   price: number | null;
 }
 
+export interface MasterPortfolioItem {
+  type: 'photo' | 'video';
+  url: string;
+  caption?: string;
+}
+
 export interface Master {
   id: string;
   name: string;
   photo_url: string | null;
   position: string | null;
+  bio?: string | null;
+  portfolio?: MasterPortfolioItem[];
 }

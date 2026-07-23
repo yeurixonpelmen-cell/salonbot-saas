@@ -28,6 +28,8 @@ CREATE TABLE masters (
   name TEXT NOT NULL,
   photo_url TEXT,
   position TEXT,
+  bio TEXT,
+  portfolio JSONB NOT NULL DEFAULT '[]'::jsonb,
   is_active BOOLEAN DEFAULT true
 );
 

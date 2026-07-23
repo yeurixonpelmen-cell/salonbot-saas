@@ -15,6 +15,7 @@ import {
 } from '../utils/slots';
 import { sendBookingNotifications } from '../bots/notifications';
 import { botManager } from '../bots/BotManager';
+import { normalizeBio, normalizePortfolio } from '../utils/portfolio';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
@@ -252,12 +253,18 @@ router.get('/salons/:salonId/masters', async (req: Request, res: Response) => {
 
   const { data } = await supabase
     .from('masters')
-    .select('id, name, photo_url, position')
+    .select('id, name, photo_url, position, bio, portfolio')
     .in('id', masterIds)
     .eq('salon_id', req.params.salonId)
     .eq('is_active', true);
 
-  res.json(data ?? []);
+  res.json(
+    (data ?? []).map((master) => ({
+      ...master,
+      bio: master.bio ?? null,
+      portfolio: normalizePortfolio(master.portfolio),
+    }))
+  );
 });
 
 router.get('/salons/:salonId/slots', async (req: Request, res: Response) => {
@@ -1335,31 +1342,57 @@ router.patch('/admin/bookings/:id', async (req: Request, res: Response) => {
 router.get('/admin/masters', async (req: Request, res: Response) => {
   const { data } = await supabase
     .from('masters')
-    .select('id, salon_id, name, photo_url, position, is_active')
+    .select('id, salon_id, name, photo_url, position, bio, portfolio, is_active')
     .eq('salon_id', req.auth!.salon_id)
     .order('name');
-  res.json(data ?? []);
+  res.json(
+    (data ?? []).map((master) => ({
+      ...master,
+      bio: master.bio ?? null,
+      portfolio: normalizePortfolio(master.portfolio),
+    }))
+  );
 });
 
 router.post('/admin/masters', async (req: Request, res: Response) => {
-  const { name, photo_url, position, is_active } = req.body;
+  const { name, photo_url, position, is_active, bio, portfolio } = req.body;
   const { data, error } = await supabase
     .from('masters')
-    .insert({ salon_id: req.auth!.salon_id, name, photo_url, position, is_active })
+    .insert({
+      salon_id: req.auth!.salon_id,
+      name,
+      photo_url,
+      position,
+      is_active,
+      bio: normalizeBio(bio),
+      portfolio: normalizePortfolio(portfolio),
+    })
     .select()
     .single();
   if (error) {
     res.status(500).json({ error: error.message });
     return;
   }
-  res.json(data);
+  res.json({
+    ...data,
+    bio: data.bio ?? null,
+    portfolio: normalizePortfolio(data.portfolio),
+  });
 });
 
 router.patch('/admin/masters/:id', async (req: Request, res: Response) => {
-  const { name, photo_url, position, is_active } = req.body;
+  const { name, photo_url, position, is_active, bio, portfolio } = req.body;
+  const patch: Record<string, unknown> = {};
+  if (name !== undefined) patch.name = name;
+  if (photo_url !== undefined) patch.photo_url = photo_url;
+  if (position !== undefined) patch.position = position;
+  if (is_active !== undefined) patch.is_active = is_active;
+  if (bio !== undefined) patch.bio = normalizeBio(bio);
+  if (portfolio !== undefined) patch.portfolio = normalizePortfolio(portfolio);
+
   const { data, error } = await supabase
     .from('masters')
-    .update({ name, photo_url, position, is_active })
+    .update(patch)
     .eq('id', req.params.id)
     .eq('salon_id', req.auth!.salon_id)
     .select()
@@ -1368,7 +1401,11 @@ router.patch('/admin/masters/:id', async (req: Request, res: Response) => {
     res.status(500).json({ error: error.message });
     return;
   }
-  res.json(data);
+  res.json({
+    ...data,
+    bio: data.bio ?? null,
+    portfolio: normalizePortfolio(data.portfolio),
+  });
 });
 
 router.delete('/admin/masters/:id', async (req: Request, res: Response) => {

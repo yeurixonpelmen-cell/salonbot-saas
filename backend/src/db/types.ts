@@ -15,12 +15,20 @@ export interface Salon {
   created_at: string;
 }
 
+export interface MasterPortfolioItem {
+  type: 'photo' | 'video';
+  url: string;
+  caption?: string;
+}
+
 export interface Master {
   id: string;
   salon_id: string;
   name: string;
   photo_url: string | null;
   position: string | null;
+  bio?: string | null;
+  portfolio?: MasterPortfolioItem[];
   is_active: boolean;
 }
 

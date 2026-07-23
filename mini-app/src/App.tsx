@@ -48,6 +48,36 @@ function serviceName(service: Service, lang: Lang): string {
   return lang === 'uk' ? service.name_uk : (service.name_en ?? service.name_uk);
 }
 
+function hasPortfolio(master: Master): boolean {
+  return Boolean(master.bio?.trim() || (master.portfolio && master.portfolio.length > 0));
+}
+
+function youtubeEmbedUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.includes('youtu.be')) {
+      const id = parsed.pathname.replace(/^\//, '').split('/')[0];
+      return id ? `https://www.youtube.com/embed/${id}` : null;
+    }
+    if (parsed.hostname.includes('youtube.com')) {
+      const id = parsed.searchParams.get('v');
+      if (id) return `https://www.youtube.com/embed/${id}`;
+      const parts = parsed.pathname.split('/');
+      const embedIdx = parts.indexOf('embed');
+      if (embedIdx >= 0 && parts[embedIdx + 1]) {
+        return `https://www.youtube.com/embed/${parts[embedIdx + 1]}`;
+      }
+      const shortsIdx = parts.indexOf('shorts');
+      if (shortsIdx >= 0 && parts[shortsIdx + 1]) {
+        return `https://www.youtube.com/embed/${parts[shortsIdx + 1]}`;
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 export default function App() {
   const salonId = getSalonId();
   const [lang, setLang] = useState<Lang>(() => detectLang());
@@ -68,6 +98,7 @@ export default function App() {
   const [phone, setPhone] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [portfolioMaster, setPortfolioMaster] = useState<Master | null>(null);
 
   const t = useCallback((key: TranslationKey) => translate(lang, key), [lang]);
   const locale = lang === 'uk' ? 'uk-UA' : 'en-US';
@@ -157,6 +188,7 @@ export default function App() {
   async function selectMaster(master: Master | null, anyMaster = false) {
     if (!selection.service) return;
 
+    setPortfolioMaster(null);
     setLoading(true);
     setError('');
     setSelection((s) => ({ ...s, master, anyMaster }));
@@ -174,6 +206,14 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function openMaster(master: Master) {
+    if (hasPortfolio(master)) {
+      setPortfolioMaster(master);
+      return;
+    }
+    void selectMaster(master);
   }
 
   function selectSlot(date: string, time: string) {
@@ -334,16 +374,17 @@ export default function App() {
               <button
                 key={m.id}
                 type="button"
-                onClick={() => void selectMaster(m)}
+                onClick={() => openMaster(m)}
                 disabled={loading}
                 className="choice-card master-card"
               >
                 <div className="avatar">
                   {m.photo_url ? <img src={m.photo_url} alt="" /> : initials(m.name)}
                 </div>
-                <div>
+                <div className="master-meta">
                   <div className="master-name">{m.name}</div>
                   {m.position && <div className="master-role">{m.position}</div>}
+                  {hasPortfolio(m) && <div className="portfolio-chip">{t('viewPortfolio')}</div>}
                 </div>
               </button>
             ))}
@@ -506,6 +547,89 @@ export default function App() {
           </div>
         </section>
       )}
+
+      {portfolioMaster && (
+        <MasterPortfolioSheet
+          master={portfolioMaster}
+          t={t}
+          loading={loading}
+          onClose={() => setPortfolioMaster(null)}
+          onSelect={() => void selectMaster(portfolioMaster)}
+        />
+      )}
+    </div>
+  );
+}
+
+function MasterPortfolioSheet({
+  master,
+  t,
+  onClose,
+  onSelect,
+  loading,
+}: {
+  master: Master;
+  t: (key: TranslationKey) => string;
+  onClose: () => void;
+  onSelect: () => void;
+  loading: boolean;
+}) {
+  const items = master.portfolio ?? [];
+
+  return (
+    <div className="portfolio-overlay" role="dialog" aria-modal="true">
+      <button type="button" className="portfolio-backdrop" aria-label={t('close')} onClick={onClose} />
+      <div className="portfolio-sheet">
+        <div className="portfolio-head">
+          <div className="portfolio-identity">
+            <div className="avatar">
+              {master.photo_url ? <img src={master.photo_url} alt="" /> : initials(master.name)}
+            </div>
+            <div>
+              <div className="master-name">{master.name}</div>
+              {master.position && <div className="master-role">{master.position}</div>}
+            </div>
+          </div>
+          <button type="button" className="ghost-btn" onClick={onClose}>{t('close')}</button>
+        </div>
+
+        {master.bio?.trim() && <p className="portfolio-bio">{master.bio}</p>}
+
+        <h3 className="portfolio-heading">{t('portfolioTitle')}</h3>
+        {!items.length && <div className="empty">{t('portfolioEmpty')}</div>}
+        <div className="portfolio-grid">
+          {items.map((item, index) => {
+            if (item.type === 'photo') {
+              return (
+                <figure key={`${item.url}-${index}`} className="portfolio-item">
+                  <img src={item.url} alt={item.caption || master.name} loading="lazy" />
+                  {item.caption && <figcaption>{item.caption}</figcaption>}
+                </figure>
+              );
+            }
+            const embed = youtubeEmbedUrl(item.url);
+            return (
+              <figure key={`${item.url}-${index}`} className="portfolio-item video">
+                {embed ? (
+                  <iframe
+                    src={embed}
+                    title={item.caption || master.name}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                ) : (
+                  <video src={item.url} controls playsInline preload="metadata" />
+                )}
+                {item.caption && <figcaption>{item.caption}</figcaption>}
+              </figure>
+            );
+          })}
+        </div>
+
+        <button type="button" className="primary-btn" disabled={loading} onClick={onSelect}>
+          {t('selectMaster')}
+        </button>
+      </div>
     </div>
   );
 }

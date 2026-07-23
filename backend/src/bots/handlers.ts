@@ -21,11 +21,14 @@ export function setupBotHandlers(bot: Bot, salonId: string): void {
   bot.command('start', async (ctx) => {
     try {
       const webAppUrl = `${miniAppBase}?salon=${salonId}`;
-      await ctx.reply('Ласкаво просимо! Запишіться до нас онлайн:', {
-        reply_markup: {
-          inline_keyboard: [[{ text: '📅 Записатись', web_app: { url: webAppUrl } }]],
-        },
-      });
+      await ctx.reply(
+        'Ласкаво просимо! 👋\nОзнайомтесь із салоном і спеціалістами — і перейдіть до запису, коли будете готові.',
+        {
+          reply_markup: {
+            inline_keyboard: [[{ text: '✨ Ознайомитись / Перейти до запису', web_app: { url: webAppUrl } }]],
+          },
+        }
+      );
     } catch (err) {
       console.error(`Failed /start reply (salon ${salonId}):`, err);
       try {

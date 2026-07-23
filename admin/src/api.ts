@@ -119,11 +119,19 @@ export interface ClientPayload {
   general_notes?: string | null;
 }
 
+export interface MasterPortfolioItem {
+  type: 'photo' | 'video';
+  url: string;
+  caption?: string;
+}
+
 export interface Master {
   id: string;
   name: string;
   photo_url: string | null;
   position: string | null;
+  bio: string | null;
+  portfolio: MasterPortfolioItem[];
   is_active: boolean;
 }
 
@@ -131,6 +139,8 @@ export interface MasterPayload {
   name: string;
   photo_url?: string | null;
   position?: string | null;
+  bio?: string | null;
+  portfolio?: MasterPortfolioItem[];
   is_active?: boolean;
 }
 
