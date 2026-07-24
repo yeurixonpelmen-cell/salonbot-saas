@@ -2,18 +2,24 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Booking,
   Master,
-  GRID_END_HOUR,
   GRID_SLOT_MINUTES,
   GRID_START_HOUR,
   getGridTimeSlots,
   localDateStr,
 } from '../api';
 import { bookingNeedsAttention, bookingTone } from '../utils/bookingVisuals';
+import {
+  DEFAULT_SALON_TIMEZONE,
+  minutesSinceMidnight,
+  zonedDateKey,
+  zonedTimeHm,
+} from '../utils/datetime';
 
 interface Props {
   bookings: Booking[];
   masters: Master[];
   date: string;
+  timeZone?: string;
   mobileMasterIndex?: number;
   onBookingClick: (b: Booking) => void;
   onAddClick: (masterId: string, time: string) => void;
@@ -30,6 +36,7 @@ export function ScheduleGrid({
   bookings,
   masters,
   date,
+  timeZone = DEFAULT_SALON_TIMEZONE,
   mobileMasterIndex = 0,
   onBookingClick,
   onAddClick,
@@ -49,19 +56,20 @@ export function ScheduleGrid({
   }, []);
 
   const displayMasters = isMobile ? [masters[mobileMasterIndex]].filter(Boolean) : masters;
-  const dayBookings = useMemo(() => bookings.filter((b) => b.datetime.startsWith(date)), [bookings, date]);
+  const dayBookings = useMemo(
+    () => bookings.filter((b) => zonedDateKey(b.datetime, timeZone) === date),
+    [bookings, date, timeZone]
+  );
   const timelineHeight = timeSlots.length * SLOT_HEIGHT;
 
   function position(booking: Booking, masterBookings: Booking[]) {
-    const start = new Date(booking.datetime);
-    const startMinute = start.getHours() * 60 + start.getMinutes();
+    const startMinute = minutesSinceMidnight(booking.datetime, timeZone);
     const dayStart = GRID_START_HOUR * 60;
     const top = Math.max(0, ((startMinute - dayStart) / GRID_SLOT_MINUTES) * SLOT_HEIGHT);
     const endMinute = startMinute + booking.duration_minutes;
     const overlaps = masterBookings
       .filter((item) => {
-        const itemStartDate = new Date(item.datetime);
-        const itemStart = itemStartDate.getHours() * 60 + itemStartDate.getMinutes();
+        const itemStart = minutesSinceMidnight(item.datetime, timeZone);
         return itemStart < endMinute && itemStart + item.duration_minutes > startMinute;
       })
       .sort((a, b) => a.datetime.localeCompare(b.datetime) || a.id.localeCompare(b.id));
@@ -99,7 +107,7 @@ export function ScheduleGrid({
                 ))}
                 {masterBookings.map((booking) => {
                   const pos = position(booking, masterBookings);
-                  const time = new Date(booking.datetime).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+                  const time = zonedTimeHm(booking.datetime, timeZone);
                   const attention = bookingNeedsAttention(booking);
                   return (
                     <article
@@ -186,11 +194,11 @@ export function formatDisplayDate(date: string): string {
 }
 
 export function shiftDate(date: string, days: number): string {
-  const d = new Date(date + 'T12:00:00');
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  const [year, month, day] = date.split('-').map(Number);
+  const d = new Date(year, month - 1, day + days);
+  return localDateStr(d);
 }
 
 export function todayStr(): string {
-  return localDateStr();
+  return zonedDateKey(new Date(), DEFAULT_SALON_TIMEZONE);
 }

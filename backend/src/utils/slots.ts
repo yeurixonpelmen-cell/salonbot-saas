@@ -1,4 +1,13 @@
+import { DateTime } from 'luxon';
 import { supabase } from '../db/client';
+import {
+  DEFAULT_SALON_TIMEZONE,
+  dayRangeUtc,
+  normalizeBookingDatetime,
+  resolveSalonTimezone,
+  zonedDateKey,
+  zonedTimeHm,
+} from './datetime';
 
 const GRID_SLOT_MINUTES = 30;
 
@@ -13,11 +22,6 @@ function formatTime(minutes: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-function getDayOfWeek(date: Date): number {
-  const d = date.getDay();
-  return d === 0 ? 7 : d;
-}
-
 function rangesOverlap(
   start1: number,
   end1: number,
@@ -25,6 +29,15 @@ function rangesOverlap(
   end2: number
 ): boolean {
   return start1 < end2 && start2 < end1;
+}
+
+async function loadSalonTimezone(salonId: string): Promise<string> {
+  const { data } = await supabase
+    .from('salons')
+    .select('timezone')
+    .eq('id', salonId)
+    .maybeSingle();
+  return resolveSalonTimezone(data?.timezone);
 }
 
 export async function generateSlots(
@@ -43,6 +56,7 @@ export async function generateSlots(
   if (!service) return {};
 
   const duration = service.duration_minutes as number;
+  const timeZone = await loadSalonTimezone(salonId);
 
   let masterIds: string[] = [];
   if (masterId) {
@@ -59,16 +73,14 @@ export async function generateSlots(
   }
 
   const result: Record<string, string[]> = {};
-  const now = new Date();
+  const now = DateTime.now().setZone(timeZone);
 
   for (let day = 0; day < daysAhead; day++) {
-    const date = new Date(now);
-    date.setDate(date.getDate() + day);
-    date.setHours(0, 0, 0, 0);
-
-    const dateKey = date.toISOString().slice(0, 10);
-    const dayOfWeek = getDayOfWeek(date);
+    const dayStartLocal = now.startOf('day').plus({ days: day });
+    const dateKey = dayStartLocal.toFormat('yyyy-MM-dd');
+    const dayOfWeek = dayStartLocal.weekday; // 1=Mon … 7=Sun (Luxon)
     const slotsSet = new Set<string>();
+    const { startIso, endIso } = dayRangeUtc(dateKey, timeZone);
 
     for (const mId of masterIds) {
       const { data: schedule } = await supabase
@@ -83,32 +95,31 @@ export async function generateSlots(
       const dayStart = parseTime(schedule.start_time.slice(0, 5));
       const dayEnd = parseTime(schedule.end_time.slice(0, 5));
 
-      const dayStartDt = new Date(date);
-      dayStartDt.setHours(Math.floor(dayStart / 60), dayStart % 60, 0, 0);
-      const dayEndDt = new Date(date);
-      dayEndDt.setHours(Math.floor(dayEnd / 60), dayEnd % 60, 0, 0);
-
       const { data: bookings } = await supabase
         .from('bookings')
         .select('booking_datetime, duration_minutes')
         .eq('master_id', mId)
         .neq('status', 'cancelled')
-        .gte('booking_datetime', dayStartDt.toISOString())
-        .lt('booking_datetime', dayEndDt.toISOString());
+        .gte('booking_datetime', startIso)
+        .lte('booking_datetime', endIso);
 
       const busyRanges = (bookings ?? []).map((b) => {
-        const start = new Date(b.booking_datetime);
-        const startMin = start.getHours() * 60 + start.getMinutes();
+        const startMin =
+          parseTime(zonedTimeHm(b.booking_datetime, timeZone));
         const endMin = startMin + b.duration_minutes;
         return { start: startMin, end: endMin };
       });
 
       for (let slot = dayStart; slot + duration <= dayEnd; slot += duration) {
         const slotEnd = slot + duration;
-        const slotDate = new Date(date);
-        slotDate.setHours(Math.floor(slot / 60), slot % 60, 0, 0);
+        const slotLocal = dayStartLocal.set({
+          hour: Math.floor(slot / 60),
+          minute: slot % 60,
+          second: 0,
+          millisecond: 0,
+        });
 
-        if (slotDate <= now) continue;
+        if (slotLocal <= now) continue;
 
         const overlaps = busyRanges.some((r) =>
           rangesOverlap(slot, slotEnd, r.start, r.end)
@@ -174,17 +185,16 @@ export async function isSlotAvailable(
 ): Promise<boolean> {
   if (!(await masterCanPerformService(salonId, masterId, serviceId))) return false;
 
+  const timeZone = await loadSalonTimezone(salonId);
+  const normalized = normalizeBookingDatetime(datetime, timeZone);
   const slots = await generateSlots(salonId, masterId, serviceId, 14);
-  const slotDate = new Date(datetime);
-  const dateKey = slotDate.toISOString().slice(0, 10);
-  const time = `${String(slotDate.getHours()).padStart(2, '0')}:${String(
-    slotDate.getMinutes()
-  ).padStart(2, '0')}`;
+  const dateKey = zonedDateKey(normalized, timeZone);
+  const time = zonedTimeHm(normalized, timeZone);
 
   return slots[dateKey]?.includes(time) ?? false;
 }
 
-export { GRID_SLOT_MINUTES };
+export { GRID_SLOT_MINUTES, DEFAULT_SALON_TIMEZONE };
 
 export function getGridTimeSlots(startHour = 8, endHour = 20): string[] {
   const slots: string[] = [];

@@ -1,29 +1,29 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  api, Booking, BookingStatus, Client, CreateBookingPayload, Master, Service,
+  api, Booking, BookingStatus, Client, CreateBookingPayload, Master, SalonSettings, Service,
   UpdateBookingPayload, VisitStatus, statusLabel, visitStatusLabel,
 } from '../api';
-import { ScheduleGrid, formatDisplayDate, shiftDate, todayStr } from '../components/ScheduleGrid';
+import { ScheduleGrid, formatDisplayDate, shiftDate } from '../components/ScheduleGrid';
 import { Button, Drawer, Input, Modal } from '../components/ui';
+import {
+  DEFAULT_SALON_TIMEZONE,
+  toDateTimeLocalValue,
+  todayInTimeZone,
+} from '../utils/datetime';
 
 type AddDraft = { masterId: string; time: string } | null;
 const VISIT_STATUSES: VisitStatus[] = ['scheduled', 'first_visit', 'waiting', 'in_progress', 'refused', 'completed'];
 const BOOKING_STATUSES: BookingStatus[] = ['pending', 'confirmed', 'cancelled', 'completed'];
 
-function toLocalDateTimeInput(value: string) {
-  const date = new Date(value);
-  const offset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
-}
-
 export function SchedulePage() {
-  const [date, setDate] = useState(todayStr());
+  const [timeZone, setTimeZone] = useState(DEFAULT_SALON_TIMEZONE);
+  const [date, setDate] = useState(() => todayInTimeZone(DEFAULT_SALON_TIMEZONE));
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [masters, setMasters] = useState<Master[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [selected, setSelected] = useState<Booking | null>(null);
-  const [addDraft, setAddDraft] = useState<AddDraft>(null);
+  const [addDraft, setAddDraft] = useState<AddDraft | null>(null);
   const [mobileMasterIndex, setMobileMasterIndex] = useState(0);
   const [visitFilter, setVisitFilter] = useState<VisitStatus | 'all'>('all');
   const [attentionOnly, setAttentionOnly] = useState(false);
@@ -41,9 +41,13 @@ export function SchedulePage() {
     Promise.all([
       api.get<Master[]>('/api/admin/masters'),
       api.get<Service[]>('/api/admin/services'),
-    ]).then(([masterData, serviceData]) => {
+      api.get<SalonSettings>('/api/admin/salon'),
+    ]).then(([masterData, serviceData, salon]) => {
       setMasters(masterData);
       setServices(serviceData);
+      const tz = salon.timezone?.trim() || DEFAULT_SALON_TIMEZONE;
+      setTimeZone(tz);
+      setDate((current) => current || todayInTimeZone(tz));
     }).catch((err: { error?: string }) => setError(err.error ?? 'Не вдалося завантажити дані'))
       .finally(() => setLoading(false));
   }, []);
@@ -86,7 +90,7 @@ export function SchedulePage() {
           <Button variant="secondary" onClick={() => setDate(shiftDate(date, -1))}>←</Button>
           <Input aria-label="Дата" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
           <Button variant="secondary" onClick={() => setDate(shiftDate(date, 1))}>→</Button>
-          <Button variant="ghost" onClick={() => setDate(todayStr())}>Сьогодні</Button>
+          <Button variant="ghost" onClick={() => setDate(todayInTimeZone(timeZone))}>Сьогодні</Button>
         </div>
         <div className="schedule-filters">
           <select className="ui-input" value={visitFilter} onChange={(event) => setVisitFilter(event.target.value as VisitStatus | 'all')}>
@@ -122,6 +126,7 @@ export function SchedulePage() {
         bookings={filteredBookings}
         masters={masters}
         date={date}
+        timeZone={timeZone}
         mobileMasterIndex={mobileMasterIndex}
         onBookingClick={setSelected}
         onAddClick={(masterId, time) => setAddDraft({ masterId, time })}
@@ -130,9 +135,11 @@ export function SchedulePage() {
 
       {selected && (
         <BookingDrawer
+          key={selected.id}
           booking={selected}
           masters={masters}
           services={services}
+          timeZone={timeZone}
           onClose={() => setSelected(null)}
           onSave={(payload) => updateBooking(selected.id, payload)}
         />
@@ -152,15 +159,16 @@ export function SchedulePage() {
 }
 
 function BookingDrawer({
-  booking, masters, services, onClose, onSave,
+  booking, masters, services, timeZone, onClose, onSave,
 }: {
   booking: Booking;
   masters: Master[];
   services: Service[];
+  timeZone: string;
   onClose: () => void;
   onSave: (payload: UpdateBookingPayload) => Promise<void>;
 }) {
-  const localDateTime = toLocalDateTimeInput(booking.datetime);
+  const initialDatetime = toDateTimeLocalValue(booking.datetime, timeZone);
   const [form, setForm] = useState({
     visit_status: booking.visit_status,
     status: booking.status,
@@ -169,14 +177,26 @@ function BookingDrawer({
     notes: booking.notes ?? '',
     masterId: booking.master_id,
     serviceId: booking.service_id,
-    datetime: localDateTime,
+    datetime: initialDatetime,
   });
   const [saving, setSaving] = useState(false);
 
   async function save() {
     setSaving(true);
     try {
-      await onSave({ ...form, attention_reason: form.attention_reason || null });
+      const payload: UpdateBookingPayload = {
+        visit_status: form.visit_status,
+        status: form.status,
+        needs_attention: form.needs_attention,
+        attention_reason: form.attention_reason || null,
+        notes: form.notes,
+        masterId: form.masterId,
+        serviceId: form.serviceId,
+      };
+      if (form.datetime !== initialDatetime) {
+        payload.datetime = form.datetime;
+      }
+      await onSave(payload);
     } finally {
       setSaving(false);
     }
@@ -297,13 +317,11 @@ function BookingForm({
         <label>Ім’я клієнта<input required value={clientName} onChange={(e) => { setClientName(e.target.value); setClientId(''); }} /></label>
         <label>Телефон<input value={clientPhone} onChange={(e) => { setClientPhone(e.target.value); setClientId(''); }} /></label>
         {!clientId && clientName && <Button className="full" type="button" variant="secondary" onClick={quickCreate}>+ Створити картку клієнта</Button>}
-        {clientId && <div className="selected-client full">✓ Обрано клієнта з бази</div>}
         <label>Спеціаліст<select required value={masterId} onChange={(e) => setMasterId(e.target.value)}>{masters.map((master) => <option key={master.id} value={master.id}>{master.name}</option>)}</select></label>
-        <label>Послуга<select required value={serviceId} onChange={(e) => setServiceId(e.target.value)}>{services.map((service) => <option key={service.id} value={service.id}>{service.name_uk} · {service.duration_minutes} хв</option>)}</select></label>
-        <label>Дата<input value={date} disabled /></label>
+        <label>Послуга<select required value={serviceId} onChange={(e) => setServiceId(e.target.value)}>{services.map((service) => <option key={service.id} value={service.id}>{service.name_uk}</option>)}</select></label>
         <label>Час<input type="time" required value={time} onChange={(e) => setTime(e.target.value)} /></label>
-        <label className="full">Нотатка<textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
-        <Button type="submit" className="full" disabled={saving || !masterId || !serviceId}>{saving ? 'Збереження…' : 'Створити запис'}</Button>
+        <label className="full">Нотатки<textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
+        <Button className="full" type="submit" disabled={saving}>{saving ? 'Збереження…' : 'Створити запис'}</Button>
       </form>
     </Modal>
   );

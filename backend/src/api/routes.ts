@@ -16,6 +16,12 @@ import {
 import { sendBookingNotifications } from '../bots/notifications';
 import { botManager } from '../bots/BotManager';
 import { normalizeBio, normalizePortfolio } from '../utils/portfolio';
+import {
+  DEFAULT_SALON_TIMEZONE,
+  dayRangeUtc,
+  normalizeBookingDatetime,
+  resolveSalonTimezone,
+} from '../utils/datetime';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
@@ -39,6 +45,15 @@ const CLIENT_FILE_MIME_TYPES = new Set([
   'application/zip',
   'application/x-zip-compressed',
 ]);
+
+async function loadSalonTimezone(salonId: string): Promise<string> {
+  const { data } = await supabase
+    .from('salons')
+    .select('timezone')
+    .eq('id', salonId)
+    .maybeSingle();
+  return resolveSalonTimezone(data?.timezone ?? DEFAULT_SALON_TIMEZONE);
+}
 
 const BOOKING_STATUSES = ['pending', 'confirmed', 'cancelled', 'completed'];
 const VISIT_STATUSES = [
@@ -298,13 +313,22 @@ router.post(
     return;
   }
 
+  let normalizedDatetime: string;
+  try {
+    const timeZone = await loadSalonTimezone(salonId);
+    normalizedDatetime = normalizeBookingDatetime(datetime, timeZone);
+  } catch {
+    res.status(400).json({ error: 'Invalid datetime' });
+    return;
+  }
+
   if (!masterId) {
-    masterId = await findAvailableMaster(salonId, serviceId, datetime);
+    masterId = await findAvailableMaster(salonId, serviceId, normalizedDatetime);
     if (!masterId) {
       res.status(409).json({ error: 'Цей час вже зайнятий. Оберіть інший.' });
       return;
     }
-  } else if (!(await isSlotAvailable(salonId, masterId, serviceId, datetime))) {
+  } else if (!(await isSlotAvailable(salonId, masterId, serviceId, normalizedDatetime))) {
     res.status(409).json({ error: 'Цей час вже зайнятий. Оберіть інший.' });
     return;
   }
@@ -337,7 +361,7 @@ router.post(
       client_name: clientName,
       client_phone: phone,
       client_id: client?.id ?? null,
-      booking_datetime: datetime,
+      booking_datetime: normalizedDatetime,
       duration_minutes: service.duration_minutes,
       status: 'pending',
     })
@@ -362,7 +386,7 @@ router.post(
     clientTelegramId,
     clientName,
     phone,
-    datetime,
+    normalizedDatetime,
     service.name_uk,
     master?.name ?? '',
     salon?.address ?? ''
@@ -602,7 +626,7 @@ router.get('/admin/salon', async (req: Request, res: Response) => {
   const { data } = await supabase
     .from('salons')
     .select(
-      'id, name_uk, name_en, address, logo_url, bot_username, admin_chat_id, reminders_enabled, review_request_enabled, google_maps_url'
+      'id, name_uk, name_en, address, logo_url, bot_username, admin_chat_id, timezone, reminders_enabled, review_request_enabled, google_maps_url'
     )
     .eq('id', req.auth!.salon_id)
     .single();
@@ -647,7 +671,7 @@ router.patch('/admin/salon', async (req: Request, res: Response) => {
     .update(update)
     .eq('id', req.auth!.salon_id)
     .select(
-      'id, name_uk, name_en, address, logo_url, bot_username, admin_chat_id, reminders_enabled, review_request_enabled, google_maps_url'
+      'id, name_uk, name_en, address, logo_url, bot_username, admin_chat_id, timezone, reminders_enabled, review_request_enabled, google_maps_url'
     )
     .single();
 
@@ -1032,14 +1056,24 @@ router.get('/admin/bookings', async (req: Request, res: Response) => {
   const date = req.query.date as string;
   const masterId = req.query.masterId as string | undefined;
   const status = req.query.status as string | undefined;
+  const salonId = req.auth!.salon_id;
+  const timeZone = await loadSalonTimezone(salonId);
   let query = supabase
     .from('bookings')
     .select('*, masters(name), services(name_uk, price, duration_minutes), clients(*), booking_notes(*)')
-    .eq('salon_id', req.auth!.salon_id);
+    .eq('salon_id', salonId);
+  let dayStartIso: string | null = null;
+  let dayEndIso: string | null = null;
   if (date) {
-    query = query
-      .gte('booking_datetime', `${date}T00:00:00`)
-      .lte('booking_datetime', `${date}T23:59:59.999`);
+    try {
+      const range = dayRangeUtc(date, timeZone);
+      dayStartIso = range.startIso;
+      dayEndIso = range.endIso;
+      query = query.gte('booking_datetime', dayStartIso).lte('booking_datetime', dayEndIso);
+    } catch {
+      res.status(400).json({ error: 'Invalid date' });
+      return;
+    }
   }
   if (masterId) query = query.eq('master_id', masterId);
   if (status) query = query.eq('status', status);
@@ -1057,15 +1091,15 @@ router.get('/admin/bookings', async (req: Request, res: Response) => {
   let conflictQuery = supabase
     .from('bookings')
     .select('id, master_id, booking_datetime, duration_minutes, status')
-    .eq('salon_id', req.auth!.salon_id)
+    .eq('salon_id', salonId)
     .in('master_id', masterIds)
     .neq('status', 'cancelled');
-  if (date) {
-    const previousDay = new Date(`${date}T00:00:00`);
-    previousDay.setDate(previousDay.getDate() - 1);
+  if (dayStartIso && dayEndIso) {
+    const prevStart = new Date(dayStartIso);
+    prevStart.setUTCDate(prevStart.getUTCDate() - 1);
     conflictQuery = conflictQuery
-      .gte('booking_datetime', previousDay.toISOString())
-      .lte('booking_datetime', `${date}T23:59:59.999`);
+      .gte('booking_datetime', prevStart.toISOString())
+      .lte('booking_datetime', dayEndIso);
   }
   const clientIds = [...new Set(bookings.map((booking) => booking.client_id).filter(Boolean))];
   const [{ data: conflictCandidates }, { data: clientFiles }] = await Promise.all([
@@ -1119,6 +1153,14 @@ router.post('/admin/bookings', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'masterId, serviceId, datetime and client are required' });
     return;
   }
+  let normalizedDatetime: string;
+  try {
+    const timeZone = await loadSalonTimezone(salonId);
+    normalizedDatetime = normalizeBookingDatetime(datetime, timeZone);
+  } catch {
+    res.status(400).json({ error: 'Invalid datetime' });
+    return;
+  }
   const [{ data: master }, { data: service }] = await Promise.all([
     supabase.from('masters').select('id').eq('id', masterId).eq('salon_id', salonId).maybeSingle(),
     supabase
@@ -1153,7 +1195,7 @@ router.post('/admin/bookings', async (req: Request, res: Response) => {
       client_telegram_id: client.telegram_id ?? -Date.now(),
       client_name: client.full_name,
       client_phone: client.phone,
-      booking_datetime: datetime,
+      booking_datetime: normalizedDatetime,
       duration_minutes: service.duration_minutes,
       status: 'confirmed',
       visit_status: count === 0 ? 'first_visit' : 'scheduled',
@@ -1309,7 +1351,15 @@ router.patch('/admin/bookings/:id', async (req: Request, res: Response) => {
   if (attention_reason !== undefined || attentionReason !== undefined) {
     update.attention_reason = attention_reason ?? attentionReason;
   }
-  if (datetime !== undefined) update.booking_datetime = datetime;
+  if (datetime !== undefined) {
+    try {
+      const timeZone = await loadSalonTimezone(salonId);
+      update.booking_datetime = normalizeBookingDatetime(datetime, timeZone);
+    } catch {
+      res.status(400).json({ error: 'Invalid datetime' });
+      return;
+    }
+  }
   if (client) {
     update.client_id = client.id;
     update.client_name = client.full_name;
