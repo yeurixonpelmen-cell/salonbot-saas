@@ -4,6 +4,7 @@ import { api, setToken, clearToken, getToken as readToken } from '../api';
 interface AuthContextType {
   isAuthenticated: boolean;
   login: (telegramData: Record<string, string>) => Promise<void>;
+  loginWithEmail: (email: string, password: string) => Promise<void>;
   logout: () => void;
   selectSalon: (salonId: string, selectionToken: string) => Promise<void>;
   refreshAuth: () => void;
@@ -48,6 +49,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function loginWithEmail(email: string, password: string) {
+    const result = await api.post<{ token: string }>('/api/auth/email', { email, password });
+    setToken(result.token);
+    setIsAuthenticated(true);
+  }
+
   async function selectSalon(salonId: string, selectionToken: string) {
     const result = await api.post<{ token: string }>('/api/auth/select-salon', {
       salonId,
@@ -67,7 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, login, logout, selectSalon, refreshAuth }}>
+    <AuthContext.Provider value={{ isAuthenticated, login, loginWithEmail, logout, selectSalon, refreshAuth }}>
       {children}
     </AuthContext.Provider>
   );

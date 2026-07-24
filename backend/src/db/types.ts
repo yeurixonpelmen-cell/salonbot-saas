@@ -116,6 +116,9 @@ export interface ClientFile {
 }
 
 export interface JwtPayload {
-  salon_id: string;
-  owner_telegram_id: number;
+  salon_id?: string;
+  owner_telegram_id?: number;
+  staff_id?: string;
+  email?: string;
+  role?: 'telegram_owner' | 'staff' | 'super';
 }

@@ -10,6 +10,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { SelectSalonPage } from './pages/SelectSalonPage';
 import { ClientsPage } from './pages/ClientsPage';
 import { ClientDetailsPage } from './pages/ClientDetailsPage';
+import { SuperAdminPage, SuperLoginPage } from './pages/SuperAdminPage';
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
@@ -23,6 +24,8 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/select-salon" element={<SelectSalonPage />} />
       <Route path="/onboarding" element={<OnboardingPage />} />
+      <Route path="/super/login" element={<SuperLoginPage />} />
+      <Route path="/super" element={<SuperAdminPage />} />
       <Route element={<ProtectedRoute />}>
         <Route path="/" element={<SchedulePage />} />
         <Route path="/clients" element={<ClientsPage />} />

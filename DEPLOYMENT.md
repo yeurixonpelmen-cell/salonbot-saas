@@ -69,6 +69,7 @@ SUPABASE_SERVICE_ROLE_KEY=...
 ENCRYPTION_KEY=...
 JWT_SECRET=...
 JWT_EXPIRES_IN=7d
+SUPER_ADMIN_PASSWORD=choose-a-long-secret
 ADMIN_LOGIN_BOT_TOKEN=...
 WEBHOOK_URL=https://your-backend.railway.app
 TELEGRAM_WEBHOOK_SECRET=...
@@ -77,6 +78,16 @@ ADMIN_URL=https://your-admin.vercel.app
 CRON_ENABLED=true
 TZ=Europe/Kyiv
 ```
+
+### Super Admin (platform owner)
+
+1. Set `SUPER_ADMIN_PASSWORD` on Railway backend.
+2. Open `https://your-admin.vercel.app/super/login`.
+3. Create a salon + paste BotFather token + staff emails.
+4. Copy temporary passwords shown once and send them to the clinic.
+5. Staff open `/login` → Email tab → sign in.
+
+Also run migration `supabase/migrations/005_salon_staff.sql` in Supabase SQL Editor.
 
 After deploy, check:
 

@@ -22,6 +22,8 @@ import {
   normalizeBookingDatetime,
   resolveSalonTimezone,
 } from '../utils/datetime';
+import { normalizeEmail, verifyPassword } from '../utils/password';
+import superRoutes from './superRoutes';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
@@ -426,7 +428,11 @@ router.post('/auth/telegram', async (req: Request, res: Response) => {
   }
 
   if (salons.length === 1) {
-    const token = signJwt({ salon_id: salons[0].id, owner_telegram_id: ownerTelegramId });
+    const token = signJwt({
+      salon_id: salons[0].id,
+      owner_telegram_id: ownerTelegramId,
+      role: 'telegram_owner',
+    });
     res.json({ token, salon: salons[0], salons });
     return;
   }
@@ -435,6 +441,54 @@ router.post('/auth/telegram', async (req: Request, res: Response) => {
     salons,
     selectionToken: signSalonSelectionJwt(ownerTelegramId),
     needsSalonPick: true,
+  });
+});
+
+router.post('/auth/email', async (req: Request, res: Response) => {
+  const email = normalizeEmail(String(req.body?.email ?? ''));
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  if (!email || !password) {
+    res.status(400).json({ error: 'Email і пароль обов’язкові' });
+    return;
+  }
+
+  const { data: staff, error } = await supabase
+    .from('salon_staff')
+    .select('id, salon_id, email, password_hash, is_active, role')
+    .eq('email', email)
+    .maybeSingle();
+
+  if (error || !staff || !staff.is_active) {
+    res.status(401).json({ error: 'Невірний email або пароль' });
+    return;
+  }
+
+  if (!verifyPassword(password, staff.password_hash)) {
+    res.status(401).json({ error: 'Невірний email або пароль' });
+    return;
+  }
+
+  const { data: salon } = await supabase
+    .from('salons')
+    .select('id, name_uk, is_active')
+    .eq('id', staff.salon_id)
+    .maybeSingle();
+
+  if (!salon?.is_active) {
+    res.status(401).json({ error: 'Салон вимкнено' });
+    return;
+  }
+
+  const token = signJwt({
+    salon_id: staff.salon_id,
+    staff_id: staff.id,
+    email: staff.email,
+    role: 'staff',
+  });
+
+  res.json({
+    token,
+    salon: { id: salon.id, name_uk: salon.name_uk },
   });
 });
 
@@ -463,7 +517,11 @@ router.post('/auth/select-salon', async (req: Request, res: Response) => {
     return;
   }
 
-  const token = signJwt({ salon_id: salon.id, owner_telegram_id: selection.owner_telegram_id });
+  const token = signJwt({
+    salon_id: salon.id,
+    owner_telegram_id: selection.owner_telegram_id,
+    role: 'telegram_owner',
+  });
   res.json({ token, salon });
 });
 
@@ -614,7 +672,11 @@ router.post('/onboarding/complete', onboardingLimiter, async (req: Request, res:
 
   await botManager.addBot(rawBotToken, salon.id);
 
-  const token = signJwt({ salon_id: salon.id, owner_telegram_id: ownerTelegramId });
+  const token = signJwt({
+    salon_id: salon.id,
+    owner_telegram_id: ownerTelegramId,
+    role: 'telegram_owner',
+  });
   res.json({ salonId: salon.id, token, botUsername });
 });
 
@@ -628,7 +690,7 @@ router.get('/admin/salon', async (req: Request, res: Response) => {
     .select(
       'id, name_uk, name_en, address, logo_url, bot_username, admin_chat_id, timezone, reminders_enabled, review_request_enabled, google_maps_url'
     )
-    .eq('id', req.auth!.salon_id)
+    .eq('id', req.auth!.salon_id!)
     .single();
 
   res.json(data);
@@ -669,7 +731,7 @@ router.patch('/admin/salon', async (req: Request, res: Response) => {
   const { data, error } = await supabase
     .from('salons')
     .update(update)
-    .eq('id', req.auth!.salon_id)
+    .eq('id', req.auth!.salon_id!)
     .select(
       'id, name_uk, name_en, address, logo_url, bot_username, admin_chat_id, timezone, reminders_enabled, review_request_enabled, google_maps_url'
     )
@@ -689,7 +751,7 @@ router.post('/admin/salon/logo', upload.single('logo'), async (req: Request, res
   }
 
   const ext = req.file.originalname.split('.').pop() ?? 'png';
-  const path = `${req.auth!.salon_id}/${Date.now()}.${ext}`;
+  const path = `${req.auth!.salon_id!}/${Date.now()}.${ext}`;
 
   const { error } = await supabase.storage.from('logos').upload(path, req.file.buffer, {
     contentType: req.file.mimetype,
@@ -712,7 +774,7 @@ router.get('/admin/clients', async (req: Request, res: Response) => {
   let query = supabase
     .from('clients')
     .select('*')
-    .eq('salon_id', req.auth!.salon_id);
+    .eq('salon_id', req.auth!.salon_id!);
   if (search) {
     query = query.or(
       `full_name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%`
@@ -731,7 +793,7 @@ router.get('/admin/clients', async (req: Request, res: Response) => {
   const { data: visits } = await supabase
     .from('bookings')
     .select('client_id, booking_datetime, status')
-    .eq('salon_id', req.auth!.salon_id)
+    .eq('salon_id', req.auth!.salon_id!)
     .in('client_id', clients.map((client) => client.id))
     .neq('status', 'cancelled')
     .order('booking_datetime', { ascending: false });
@@ -773,7 +835,7 @@ router.post('/admin/clients', async (req: Request, res: Response) => {
   const { data, error } = await supabase
     .from('clients')
     .insert({
-      salon_id: req.auth!.salon_id,
+      salon_id: req.auth!.salon_id!,
       telegram_id: telegram_id ?? null,
       full_name: name || normalizedPhone,
       phone: normalizedPhone,
@@ -792,7 +854,7 @@ router.post('/admin/clients', async (req: Request, res: Response) => {
 });
 
 router.get('/admin/clients/:id', async (req: Request, res: Response) => {
-  const salonId = req.auth!.salon_id;
+  const salonId = req.auth!.salon_id!;
   const { data: client } = await supabase
     .from('clients')
     .select('*')
@@ -860,7 +922,7 @@ router.patch('/admin/clients/:id', async (req: Request, res: Response) => {
     .from('clients')
     .update(update)
     .eq('id', req.params.id)
-    .eq('salon_id', req.auth!.salon_id)
+    .eq('salon_id', req.auth!.salon_id!)
     .select()
     .maybeSingle();
   if (error) {
@@ -875,7 +937,7 @@ router.patch('/admin/clients/:id', async (req: Request, res: Response) => {
 });
 
 router.delete('/admin/clients/:id', async (req: Request, res: Response) => {
-  const salonId = req.auth!.salon_id;
+  const salonId = req.auth!.salon_id!;
   const clientId = req.params.id;
   const { data: existing } = await supabase
     .from('clients')
@@ -923,7 +985,7 @@ router.post(
   '/admin/clients/:id/files',
   clientFileUpload.single('file'),
   async (req: Request, res: Response) => {
-    const salonId = req.auth!.salon_id;
+    const salonId = req.auth!.salon_id!;
     if (!req.file) {
       res.status(400).json({ error: 'No file' });
       return;
@@ -988,7 +1050,7 @@ router.post(
 );
 
 router.get('/admin/clients/:id/files', async (req: Request, res: Response) => {
-  const salonId = req.auth!.salon_id;
+  const salonId = req.auth!.salon_id!;
   const { data: client } = await supabase
     .from('clients')
     .select('id')
@@ -1021,7 +1083,7 @@ router.get('/admin/clients/:id/files', async (req: Request, res: Response) => {
 });
 
 router.delete('/admin/clients/:clientId/files/:fileId', async (req: Request, res: Response) => {
-  const salonId = req.auth!.salon_id;
+  const salonId = req.auth!.salon_id!;
   const { data: file } = await supabase
     .from('client_files')
     .select('*')
@@ -1056,7 +1118,7 @@ router.get('/admin/bookings', async (req: Request, res: Response) => {
   const date = req.query.date as string;
   const masterId = req.query.masterId as string | undefined;
   const status = req.query.status as string | undefined;
-  const salonId = req.auth!.salon_id;
+  const salonId = req.auth!.salon_id!;
   const timeZone = await loadSalonTimezone(salonId);
   let query = supabase
     .from('bookings')
@@ -1108,7 +1170,7 @@ router.get('/admin/bookings', async (req: Request, res: Response) => {
       ? supabase
         .from('client_files')
         .select('client_id')
-        .eq('salon_id', req.auth!.salon_id)
+        .eq('salon_id', req.auth!.salon_id!)
         .in('client_id', clientIds)
       : Promise.resolve({ data: [] as { client_id: string | null }[] }),
   ]);
@@ -1125,7 +1187,7 @@ router.get('/admin/bookings/stream', async (req: Request, res: Response) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
 
-  const salonId = req.auth!.salon_id;
+  const salonId = req.auth!.salon_id!;
   let lastCheck = new Date().toISOString();
 
   const interval = setInterval(async () => {
@@ -1147,7 +1209,7 @@ router.get('/admin/bookings/stream', async (req: Request, res: Response) => {
 });
 
 router.post('/admin/bookings', async (req: Request, res: Response) => {
-  const salonId = req.auth!.salon_id;
+  const salonId = req.auth!.salon_id!;
   const { masterId, serviceId, clientId, clientName, clientPhone, datetime, notes } = req.body;
   if (!masterId || !serviceId || !datetime || (!clientId && !clientName)) {
     res.status(400).json({ error: 'masterId, serviceId, datetime and client are required' });
@@ -1210,7 +1272,7 @@ router.post('/admin/bookings', async (req: Request, res: Response) => {
   await supabase.from('booking_notes').insert({
     salon_id: salonId,
     booking_id: data.id,
-    author_id: req.auth!.owner_telegram_id,
+    author_id: req.auth!.owner_telegram_id ?? null,
     body: typeof notes === 'string' && notes.trim() ? notes.trim() : 'Booking created',
   });
   res.status(201).json(withConflictFlags([data])[0]);
@@ -1221,7 +1283,7 @@ router.get('/admin/bookings/:id/notes', async (req: Request, res: Response) => {
     .from('bookings')
     .select('id')
     .eq('id', req.params.id)
-    .eq('salon_id', req.auth!.salon_id)
+    .eq('salon_id', req.auth!.salon_id!)
     .maybeSingle();
   if (!booking) {
     res.status(404).json({ error: 'Booking not found' });
@@ -1231,7 +1293,7 @@ router.get('/admin/bookings/:id/notes', async (req: Request, res: Response) => {
     .from('booking_notes')
     .select('*')
     .eq('booking_id', booking.id)
-    .eq('salon_id', req.auth!.salon_id)
+    .eq('salon_id', req.auth!.salon_id!)
     .order('created_at');
   if (error) {
     res.status(500).json({ error: error.message });
@@ -1246,7 +1308,7 @@ router.post('/admin/bookings/:id/notes', async (req: Request, res: Response) => 
     res.status(400).json({ error: 'body is required' });
     return;
   }
-  const salonId = req.auth!.salon_id;
+  const salonId = req.auth!.salon_id!;
   const { data: booking } = await supabase
     .from('bookings')
     .select('id')
@@ -1262,7 +1324,7 @@ router.post('/admin/bookings/:id/notes', async (req: Request, res: Response) => 
     .insert({
       salon_id: salonId,
       booking_id: booking.id,
-      author_id: req.auth!.owner_telegram_id,
+      author_id: req.auth!.owner_telegram_id ?? null,
       body,
     })
     .select()
@@ -1275,7 +1337,7 @@ router.post('/admin/bookings/:id/notes', async (req: Request, res: Response) => 
 });
 
 router.patch('/admin/bookings/:id', async (req: Request, res: Response) => {
-  const salonId = req.auth!.salon_id;
+  const salonId = req.auth!.salon_id!;
   const { data: existing } = await supabase
     .from('bookings')
     .select('*')
@@ -1381,7 +1443,7 @@ router.patch('/admin/bookings/:id', async (req: Request, res: Response) => {
     await supabase.from('booking_notes').insert({
       salon_id: salonId,
       booking_id: existing.id,
-      author_id: req.auth!.owner_telegram_id,
+      author_id: req.auth!.owner_telegram_id ?? null,
       body: typeof notes === 'string' && notes.trim() ? notes.trim() : 'Notes cleared',
     });
   }
@@ -1393,7 +1455,7 @@ router.get('/admin/masters', async (req: Request, res: Response) => {
   const { data } = await supabase
     .from('masters')
     .select('id, salon_id, name, photo_url, position, bio, portfolio, is_active')
-    .eq('salon_id', req.auth!.salon_id)
+    .eq('salon_id', req.auth!.salon_id!)
     .order('name');
   res.json(
     (data ?? []).map((master) => ({
@@ -1409,7 +1471,7 @@ router.post('/admin/masters', async (req: Request, res: Response) => {
   const { data, error } = await supabase
     .from('masters')
     .insert({
-      salon_id: req.auth!.salon_id,
+      salon_id: req.auth!.salon_id!,
       name,
       photo_url,
       position,
@@ -1444,7 +1506,7 @@ router.patch('/admin/masters/:id', async (req: Request, res: Response) => {
     .from('masters')
     .update(patch)
     .eq('id', req.params.id)
-    .eq('salon_id', req.auth!.salon_id)
+    .eq('salon_id', req.auth!.salon_id!)
     .select()
     .single();
   if (error) {
@@ -1463,7 +1525,7 @@ router.delete('/admin/masters/:id', async (req: Request, res: Response) => {
     .from('masters')
     .delete()
     .eq('id', req.params.id)
-    .eq('salon_id', req.auth!.salon_id);
+    .eq('salon_id', req.auth!.salon_id!);
   res.json({ ok: true });
 });
 
@@ -1472,7 +1534,7 @@ router.get('/admin/masters/:id/schedule', async (req: Request, res: Response) =>
     .from('masters')
     .select('id')
     .eq('id', req.params.id)
-    .eq('salon_id', req.auth!.salon_id)
+    .eq('salon_id', req.auth!.salon_id!)
     .single();
 
   if (!master) {
@@ -1495,7 +1557,7 @@ router.put('/admin/masters/:id/schedule', async (req: Request, res: Response) =>
     .from('masters')
     .select('id')
     .eq('id', masterId)
-    .eq('salon_id', req.auth!.salon_id)
+    .eq('salon_id', req.auth!.salon_id!)
     .single();
 
   if (!master) {
@@ -1523,7 +1585,7 @@ router.get('/admin/services', async (req: Request, res: Response) => {
   const { data: services } = await supabase
     .from('services')
     .select('id, salon_id, name_uk, name_en, duration_minutes, price, is_active')
-    .eq('salon_id', req.auth!.salon_id)
+    .eq('salon_id', req.auth!.salon_id!)
     .order('name_uk');
 
   const result = [];
@@ -1551,7 +1613,7 @@ router.post('/admin/services', async (req: Request, res: Response) => {
   const { data, error } = await supabase
     .from('services')
     .insert({
-      salon_id: req.auth!.salon_id,
+      salon_id: req.auth!.salon_id!,
       name_uk,
       name_en,
       duration_minutes,
@@ -1570,7 +1632,7 @@ router.post('/admin/services', async (req: Request, res: Response) => {
     const { data: ownedMasters } = await supabase
       .from('masters')
       .select('id')
-      .eq('salon_id', req.auth!.salon_id)
+      .eq('salon_id', req.auth!.salon_id!)
       .in('id', masterIds);
     const ownedMasterIds = (ownedMasters ?? []).map((m) => m.id);
     if (ownedMasterIds.length) {
@@ -1589,7 +1651,7 @@ router.patch('/admin/services/:id', async (req: Request, res: Response) => {
     .from('services')
     .update({ name_uk, name_en, duration_minutes, price, is_active })
     .eq('id', req.params.id)
-    .eq('salon_id', req.auth!.salon_id)
+    .eq('salon_id', req.auth!.salon_id!)
     .select()
     .single();
 
@@ -1604,7 +1666,7 @@ router.patch('/admin/services/:id', async (req: Request, res: Response) => {
       const { data: ownedMasters } = await supabase
         .from('masters')
         .select('id')
-        .eq('salon_id', req.auth!.salon_id)
+        .eq('salon_id', req.auth!.salon_id!)
         .in('id', masterIds);
       const ownedMasterIds = (ownedMasters ?? []).map((m) => m.id);
       if (ownedMasterIds.length) {
@@ -1623,8 +1685,10 @@ router.delete('/admin/services/:id', async (req: Request, res: Response) => {
     .from('services')
     .delete()
     .eq('id', req.params.id)
-    .eq('salon_id', req.auth!.salon_id);
+    .eq('salon_id', req.auth!.salon_id!);
   res.json({ ok: true });
 });
+
+router.use('/super', superRoutes);
 
 export default router;
