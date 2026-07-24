@@ -93,23 +93,6 @@ export function SettingsPage() {
       {error && <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-red-800">{error}</div>}
 
       <form onSubmit={submit} className="bg-white border rounded-2xl p-5 space-y-4 settings-card">
-        <div className="rounded-xl border p-3 space-y-1 theme-toggle-card">
-          <label className="flex items-start gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={theme === 'dark'}
-              onChange={(e) => toggleDarkBackground(e.target.checked)}
-            />
-            <span>
-              <span className="font-medium block">Чорний фон адмінки</span>
-              <span className="text-sm text-gray-500 settings-muted">
-                Темна тема для всього кабінету. Увімкнення одразу, зберігається на цьому пристрої.
-              </span>
-            </span>
-          </label>
-        </div>
-
         <Input
           label="Назва салону (укр) *"
           value={settings.name_uk}
@@ -214,6 +197,21 @@ export function SettingsPage() {
             </div>
           )}
         </div>
+
+        <label className="flex items-start gap-3 rounded-xl border p-3 cursor-pointer hover:bg-gray-50">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={theme === 'dark'}
+            onChange={(e) => toggleDarkBackground(e.target.checked)}
+          />
+          <span>
+            <span className="font-medium block">Темний фон адмінки</span>
+            <span className="text-sm text-gray-500 settings-muted">
+              Темно-сірий фон для всього кабінету. Увімкнення одразу, зберігається на цьому пристрої.
+            </span>
+          </span>
+        </label>
 
         <button type="submit" disabled={saving} className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium">
           {saving ? 'Збереження...' : 'Зберегти налаштування'}
