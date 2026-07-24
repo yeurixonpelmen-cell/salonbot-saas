@@ -1,5 +1,6 @@
 import { ChangeEvent, FormEvent, useEffect, useState } from 'react';
 import { api, SalonSettings } from '../api';
+import { AdminTheme, applyAdminTheme, getAdminTheme } from '../utils/theme';
 
 export function SettingsPage() {
   const [settings, setSettings] = useState<SalonSettings | null>(null);
@@ -7,6 +8,7 @@ export function SettingsPage() {
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [theme, setTheme] = useState<AdminTheme>(() => getAdminTheme());
 
   async function load() {
     setError('');
@@ -20,6 +22,12 @@ export function SettingsPage() {
   useEffect(() => {
     load();
   }, []);
+
+  function toggleDarkBackground(enabled: boolean) {
+    const next: AdminTheme = enabled ? 'dark' : 'light';
+    setTheme(next);
+    applyAdminTheme(next);
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -78,13 +86,30 @@ export function SettingsPage() {
     <div className="max-w-2xl space-y-4">
       <div>
         <h1 className="text-2xl font-bold">Налаштування</h1>
-        <p className="text-sm text-gray-500">Дані салону, логотип і Telegram-сповіщення</p>
+        <p className="text-sm text-gray-500 settings-muted">Дані салону, логотип і Telegram-сповіщення</p>
       </div>
 
       {message && <div className="rounded-xl bg-green-50 border border-green-200 p-3 text-green-800">{message}</div>}
       {error && <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-red-800">{error}</div>}
 
-      <form onSubmit={submit} className="bg-white border rounded-2xl p-5 space-y-4">
+      <form onSubmit={submit} className="bg-white border rounded-2xl p-5 space-y-4 settings-card">
+        <div className="rounded-xl border p-3 space-y-1 theme-toggle-card">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={theme === 'dark'}
+              onChange={(e) => toggleDarkBackground(e.target.checked)}
+            />
+            <span>
+              <span className="font-medium block">Чорний фон адмінки</span>
+              <span className="text-sm text-gray-500 settings-muted">
+                Темна тема для всього кабінету. Увімкнення одразу, зберігається на цьому пристрої.
+              </span>
+            </span>
+          </label>
+        </div>
+
         <Input
           label="Назва салону (укр) *"
           value={settings.name_uk}
@@ -103,7 +128,7 @@ export function SettingsPage() {
         />
 
         <div>
-          <div className="text-sm text-gray-600 mb-2">Логотип салону</div>
+          <div className="text-sm text-gray-600 mb-2 settings-muted">Логотип салону</div>
           <div className="flex items-center gap-3">
             {settings.logo_url ? (
               <img src={settings.logo_url} alt="" className="w-16 h-16 rounded-xl object-cover border" />
@@ -128,7 +153,7 @@ export function SettingsPage() {
             value={settings.admin_chat_id ?? ''}
             onChange={(admin_chat_id) => setSettings({ ...settings, admin_chat_id })}
           />
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-500 settings-muted">
             Додайте бота в Telegram-групу або канал як адміна, потім вставте chat_id.
           </p>
         </div>
@@ -136,7 +161,7 @@ export function SettingsPage() {
         <div className="border-t pt-4 space-y-4">
           <div>
             <h2 className="font-semibold">Автоповідомлення клієнтам</h2>
-            <p className="text-sm text-gray-500 mt-1">Увімкніть те, що потрібно саме вашому салону</p>
+            <p className="text-sm text-gray-500 mt-1 settings-muted">Увімкніть те, що потрібно саме вашому салону</p>
           </div>
 
           <div className="rounded-xl bg-blue-50 border border-blue-100 p-3 text-sm text-blue-900">
@@ -156,7 +181,7 @@ export function SettingsPage() {
             />
             <span>
               <span className="font-medium block">Нагадування про запис</span>
-              <span className="text-sm text-gray-500">Бот напише клієнту за 24 години і за 2 години до візиту</span>
+              <span className="text-sm text-gray-500 settings-muted">Бот напише клієнту за 24 години і за 2 години до візиту</span>
             </span>
           </label>
 
@@ -169,7 +194,7 @@ export function SettingsPage() {
             />
             <span>
               <span className="font-medium block">Прохання залишити відгук</span>
-              <span className="text-sm text-gray-500">
+              <span className="text-sm text-gray-500 settings-muted">
                 Через ~1–4 години після закінчення візиту бот надішле посилання на Google Maps
               </span>
             </span>
@@ -183,7 +208,7 @@ export function SettingsPage() {
                 onChange={(google_maps_url) => setSettings({ ...settings, google_maps_url })}
                 placeholder="https://maps.google.com/..."
               />
-              <p className="text-sm text-gray-500 mt-1">
+              <p className="text-sm text-gray-500 mt-1 settings-muted">
                 Відкрийте свій заклад у Google Maps → «Поділитися» або «Написати відгук» → скопіюйте посилання.
               </p>
             </div>
@@ -215,7 +240,7 @@ function Input({
 }) {
   return (
     <label className="block">
-      <span className="text-sm text-gray-600">{label}</span>
+      <span className="text-sm text-gray-600 settings-muted">{label}</span>
       <input
         value={value}
         onChange={(e) => onChange?.(e.target.value)}
