@@ -2,7 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   api, Booking, BookingStatus, Client, CreateBookingPayload, Master, SalonSettings, Service,
-  UpdateBookingPayload, VisitStatus, statusLabel, visitStatusLabel,
+  UpdateBookingPayload, VisitStatus, GRID_END_HOUR, GRID_START_HOUR, statusLabel, visitStatusLabel,
 } from '../api';
 import { ScheduleGrid, formatDisplayDate, shiftDate } from '../components/ScheduleGrid';
 import { Button, Drawer, Input, Modal } from '../components/ui';
@@ -141,7 +141,10 @@ export function SchedulePage() {
           services={services}
           timeZone={timeZone}
           onClose={() => setSelected(null)}
-          onSave={(payload) => updateBooking(selected.id, payload)}
+          onSave={async (payload) => {
+            await updateBooking(selected.id, payload);
+            setSelected(null);
+          }}
         />
       )}
       {addDraft && (
@@ -180,10 +183,24 @@ function BookingDrawer({
     datetime: initialDatetime,
   });
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  function isWorkingHours(datetimeLocal: string): boolean {
+    const time = datetimeLocal.split('T')[1]?.slice(0, 5);
+    if (!time) return false;
+    const [h, m] = time.split(':').map(Number);
+    const minutes = h * 60 + m;
+    return minutes >= GRID_START_HOUR * 60 && minutes < GRID_END_HOUR * 60;
+  }
 
   async function save() {
     setSaving(true);
+    setFormError('');
     try {
+      if (form.datetime !== initialDatetime && !isWorkingHours(form.datetime)) {
+        setFormError(`Час має бути в робочих годинах сітки: ${String(GRID_START_HOUR).padStart(2, '0')}:00–${String(GRID_END_HOUR).padStart(2, '0')}:00`);
+        return;
+      }
       const payload: UpdateBookingPayload = {
         visit_status: form.visit_status,
         status: form.status,
@@ -197,6 +214,8 @@ function BookingDrawer({
         payload.datetime = form.datetime;
       }
       await onSave(payload);
+    } catch (err) {
+      setFormError((err as { error?: string }).error ?? 'Не вдалося зберегти');
     } finally {
       setSaving(false);
     }
@@ -220,6 +239,7 @@ function BookingDrawer({
           </div>
         </div>
         <div className="form-grid">
+          {formError && <div className="notice-error full">{formError}</div>}
           <label>Стан візиту<select value={form.visit_status} onChange={(e) => setForm({ ...form, visit_status: e.target.value as VisitStatus })}>
             {VISIT_STATUSES.map((status) => <option key={status} value={status}>{visitStatusLabel(status)}</option>)}
           </select></label>
@@ -232,7 +252,11 @@ function BookingDrawer({
           <label>Послуга<select value={form.serviceId} onChange={(e) => setForm({ ...form, serviceId: e.target.value })}>
             {services.map((service) => <option key={service.id} value={service.id}>{service.name_uk}</option>)}
           </select></label>
-          <label className="full">Дата й час<input type="datetime-local" value={form.datetime} onChange={(e) => setForm({ ...form, datetime: e.target.value })} /></label>
+          <label className="full">
+            Дата й час
+            <input type="datetime-local" step={1800} value={form.datetime} onChange={(e) => setForm({ ...form, datetime: e.target.value })} />
+            <span className="field-hint">Робочі години сітки: {String(GRID_START_HOUR).padStart(2, '0')}:00–{String(GRID_END_HOUR).padStart(2, '0')}:00</span>
+          </label>
           <label className="attention-check full"><input type="checkbox" checked={form.needs_attention} onChange={(e) => setForm({ ...form, needs_attention: e.target.checked })} /> Потребує уваги</label>
           {form.needs_attention && <label className="full">Причина<input value={form.attention_reason} onChange={(e) => setForm({ ...form, attention_reason: e.target.value })} /></label>}
           <label className="full">Нотатки<textarea rows={5} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Ctrl+Enter — зберегти" /></label>
