@@ -1,12 +1,21 @@
 import cron from 'node-cron';
 import { supabase } from '../db/client';
 import { botManager } from '../bots/BotManager';
+import {
+  getUserBotLanguage,
+  localeForLang,
+  serviceDisplayName,
+  t,
+} from '../bots/i18n';
 
 type SalonNotifySettings = {
   address?: string | null;
   reminders_enabled?: boolean | null;
   review_request_enabled?: boolean | null;
   google_maps_url?: string | null;
+  name_uk?: string | null;
+  name_en?: string | null;
+  language?: string | null;
 };
 
 export function startReminderJobs(): void {
@@ -16,8 +25,8 @@ export function startReminderJobs(): void {
   }
 
   cron.schedule('*/15 * * * *', async () => {
-    await sendReminders(24, 'reminder_24h_sent', 'Завтра');
-    await sendReminders(2, 'reminder_2h_sent', 'Через 2 години');
+    await sendReminders(24, 'reminder_24h_sent');
+    await sendReminders(2, 'reminder_2h_sent');
     await sendReviewRequests();
   });
 
@@ -26,8 +35,7 @@ export function startReminderJobs(): void {
 
 async function sendReminders(
   hoursAhead: number,
-  flagField: 'reminder_24h_sent' | 'reminder_2h_sent',
-  timeLabel: string
+  flagField: 'reminder_24h_sent' | 'reminder_2h_sent'
 ): Promise<void> {
   const now = new Date();
   const windowStart = new Date(now.getTime() + (hoursAhead * 60 - 15) * 60 * 1000);
@@ -36,7 +44,7 @@ async function sendReminders(
   const { data: bookings } = await supabase
     .from('bookings')
     .select(
-      'id, salon_id, client_telegram_id, booking_datetime, services(name_uk), masters(name), salons(address, reminders_enabled)'
+      'id, salon_id, client_telegram_id, booking_datetime, services(name_uk, name_en), masters(name), salons(address, reminders_enabled, language)'
     )
     .in('status', ['confirmed', 'pending'])
     .eq(flagField, false)
@@ -52,20 +60,28 @@ async function sendReminders(
     const bot = botManager.getBotBySalonId(b.salon_id);
     if (!bot) continue;
 
+    const lang = await getUserBotLanguage(b.salon_id, b.client_telegram_id);
+    const d = t(lang);
+    const timeLabel = hoursAhead === 24 ? d.reminderTomorrow : d.reminderIn2h;
+
     const dt = new Date(b.booking_datetime);
     const service = Array.isArray(b.services) ? b.services[0] : b.services;
     const master = Array.isArray(b.masters) ? b.masters[0] : b.masters;
-    const serviceName = (service as { name_uk: string } | null | undefined)?.name_uk ?? '';
+    const serviceName = serviceDisplayName(
+      lang,
+      service as { name_uk: string; name_en: string | null } | null
+    );
     const masterName = (master as { name: string } | null | undefined)?.name ?? '';
     const address = salon?.address ?? '';
+    const time = dt.toLocaleTimeString(localeForLang(lang), { hour: '2-digit', minute: '2-digit' });
 
     try {
       await bot.api.sendMessage(
         b.client_telegram_id,
-        `⏰ Нагадування!\n${timeLabel} о ${dt.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })} у вас запис:\n✂️ ${serviceName}\n👤 Майстер: ${masterName}\n📍 ${address}`,
+        `${d.reminderTitle}\n${timeLabel} ${d.reminderBody(time)}\n✂️ ${serviceName}\n👤 ${d.master}: ${masterName}\n📍 ${address}`,
         {
           reply_markup: {
-            inline_keyboard: [[{ text: '❌ Скасувати запис', callback_data: `cancel_${b.id}` }]],
+            inline_keyboard: [[{ text: d.cancelBooking, callback_data: `cancel_${b.id}` }]],
           },
         }
       );
@@ -89,7 +105,7 @@ async function sendReviewRequests(): Promise<void> {
   const { data: bookings } = await supabase
     .from('bookings')
     .select(
-      'id, salon_id, client_telegram_id, booking_datetime, duration_minutes, visit_status, status, salons(review_request_enabled, google_maps_url, name_uk)'
+      'id, salon_id, client_telegram_id, booking_datetime, duration_minutes, visit_status, status, salons(review_request_enabled, google_maps_url, name_uk, name_en, language)'
     )
     .in('status', ['confirmed', 'pending', 'completed'])
     .neq('visit_status', 'refused')
@@ -100,9 +116,7 @@ async function sendReviewRequests(): Promise<void> {
   for (const b of bookings ?? []) {
     if (!b.client_telegram_id) continue;
 
-    const salon = (Array.isArray(b.salons) ? b.salons[0] : b.salons) as
-      | (SalonNotifySettings & { name_uk?: string })
-      | null;
+    const salon = (Array.isArray(b.salons) ? b.salons[0] : b.salons) as SalonNotifySettings | null;
 
     if (!salon?.review_request_enabled) continue;
     const mapsUrl = salon.google_maps_url?.trim();
@@ -111,24 +125,24 @@ async function sendReviewRequests(): Promise<void> {
     const start = new Date(b.booking_datetime).getTime();
     const end = start + Number(b.duration_minutes || 60) * 60_000;
     const hoursAfterEnd = (now.getTime() - end) / 3_600_000;
-    // Send once the visit should be finished, within ~1–4 hours after end.
     if (hoursAfterEnd < 1 || hoursAfterEnd > 4) continue;
 
     const bot = botManager.getBotBySalonId(b.salon_id);
     if (!bot) continue;
 
-    const salonName = salon.name_uk ?? 'нас';
+    const lang = await getUserBotLanguage(b.salon_id, b.client_telegram_id);
+    const d = t(lang);
+    const salonName =
+      lang === 'en' && salon.name_en?.trim()
+        ? salon.name_en.trim()
+        : salon.name_uk ?? 'us';
 
     try {
-      await bot.api.sendMessage(
-        b.client_telegram_id,
-        `Дякуємо, що були в «${salonName}»! 💛\nЯкщо все сподобалось — залиште короткий відгук на Google Maps. Це дуже допомагає.`,
-        {
-          reply_markup: {
-            inline_keyboard: [[{ text: '⭐ Залишити відгук', url: mapsUrl }]],
-          },
-        }
-      );
+      await bot.api.sendMessage(b.client_telegram_id, d.reviewThanks(salonName), {
+        reply_markup: {
+          inline_keyboard: [[{ text: d.leaveReview, url: mapsUrl }]],
+        },
+      });
 
       await supabase
         .from('bookings')

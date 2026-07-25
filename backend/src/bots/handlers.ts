@@ -1,12 +1,35 @@
 import { Bot, Context } from 'grammy';
 import { supabase } from '../db/client';
 import { publishSalonBookingsChanged } from '../realtime/salonEvents';
+import {
+  getUserBotLanguage,
+  languageKeyboard,
+  localeForLang,
+  normalizeBotLang,
+  serviceDisplayName,
+  setUserBotLanguage,
+  t,
+  type BotLang,
+} from './i18n';
 
 function normalizePublicUrl(raw: string | undefined, fallback: string): string {
   const value = (raw ?? fallback).trim();
   if (!value) return fallback;
   if (/^https?:\/\//i.test(value)) return value.replace(/\/+$/, '');
   return `https://${value.replace(/^\/+/, '').replace(/\/+$/, '')}`;
+}
+
+async function replyWelcome(ctx: Context, salonId: string, miniAppBase: string, lang: BotLang) {
+  const d = t(lang);
+  const webAppUrl = `${miniAppBase}?salon=${salonId}&lang=${lang}`;
+  await ctx.reply(d.welcome, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: d.openBooking, web_app: { url: webAppUrl } }],
+        ...languageKeyboard(lang).inline_keyboard,
+      ],
+    },
+  });
 }
 
 export function setupBotHandlers(bot: Bot, salonId: string): void {
@@ -21,48 +44,59 @@ export function setupBotHandlers(bot: Bot, salonId: string): void {
 
   bot.command('start', async (ctx) => {
     try {
-      const webAppUrl = `${miniAppBase}?salon=${salonId}`;
-      await ctx.reply(
-        'Ласкаво просимо! 👋\nОзнайомтесь із салоном і спеціалістами — і перейдіть до запису, коли будете готові.',
-        {
-          reply_markup: {
-            inline_keyboard: [[{ text: '✨ Ознайомитись / Перейти до запису', web_app: { url: webAppUrl } }]],
-          },
-        }
-      );
+      const lang = await getUserBotLanguage(salonId, ctx.from?.id);
+      await replyWelcome(ctx, salonId, miniAppBase, lang);
     } catch (err) {
       console.error(`Failed /start reply (salon ${salonId}):`, err);
       try {
-        await ctx.reply('Не вдалось відкрити запис онлайн. Спробуйте пізніше.');
+        const lang = await getUserBotLanguage(salonId, ctx.from?.id);
+        await ctx.reply(t(lang).startFailed);
       } catch {
         // Ignore secondary Telegram errors.
       }
     }
   });
 
+  bot.command('language', async (ctx) => {
+    const lang = await getUserBotLanguage(salonId, ctx.from?.id);
+    const d = t(lang);
+    await ctx.reply(d.chooseLanguage, { reply_markup: languageKeyboard(lang) });
+  });
+
   bot.command('mybookings', async (ctx) => {
     const userId = ctx.from?.id;
     if (!userId) return;
 
-    const { data: bookings } = await supabase
+    const lang = await getUserBotLanguage(salonId, userId);
+    const d = t(lang);
+
+    const { data: bookings, error } = await supabase
       .from('bookings')
-      .select('*, services(name_uk), masters(name)')
+      .select('*, services(name_uk, name_en), masters(name)')
       .eq('client_telegram_id', userId)
       .eq('salon_id', salonId)
       .gt('booking_datetime', new Date().toISOString())
       .neq('status', 'cancelled')
       .order('booking_datetime');
 
+    if (error) {
+      console.error(`mybookings query failed (salon ${salonId}):`, error);
+    }
+
     if (!bookings?.length) {
-      await ctx.reply('У вас немає активних записів.');
+      await ctx.reply(d.noBookings);
       return;
     }
 
     const lines = bookings.map((b) => {
       const dt = new Date(b.booking_datetime);
-      const service = (b.services as { name_uk: string } | null)?.name_uk ?? '';
+      const service = serviceDisplayName(
+        lang,
+        b.services as { name_uk: string; name_en: string | null } | null
+      );
       const master = (b.masters as { name: string } | null)?.name ?? '';
-      return `📅 ${dt.toLocaleString('uk-UA')}\n✂️ ${service}\n👤 ${master}\nСтатус: ${b.status}`;
+      const status = d.statusLabels[b.status] ?? b.status;
+      return `📅 ${dt.toLocaleString(localeForLang(lang))}\n✂️ ${service}\n👤 ${master}\n${d.status}: ${status}`;
     });
 
     await ctx.reply(lines.join('\n\n'));
@@ -72,22 +106,38 @@ export function setupBotHandlers(bot: Bot, salonId: string): void {
     const data = ctx.callbackQuery.data;
     if (!data) return;
 
-    // admin_cancel_ before cancel_ (cancel_ is a prefix of neither, but keep order explicit)
+    if (data.startsWith('lang_')) {
+      const next = normalizeBotLang(data.slice('lang_'.length));
+      const userId = ctx.from?.id;
+      if (!userId) {
+        await ctx.answerCallbackQuery();
+        return;
+      }
+      await setUserBotLanguage(salonId, userId, next);
+      const d = t(next);
+      await ctx.answerCallbackQuery({ text: d.languageSaved });
+      await replyWelcome(ctx, salonId, miniAppBase, next);
+      return;
+    }
+
+    const lang = await getUserBotLanguage(salonId, ctx.from?.id);
+    const d = t(lang);
+
     if (data.startsWith('admin_cancel_')) {
       const bookingId = data.slice('admin_cancel_'.length);
       const isAllowed = await ensureAdminCallback(ctx.chat?.id, salonId);
       if (!isAllowed) {
-        await ctx.answerCallbackQuery({ text: 'Недостатньо прав', show_alert: true });
+        await ctx.answerCallbackQuery({ text: d.insufficientRights, show_alert: true });
         return;
       }
 
       const updated = await updateBookingStatus(bookingId, salonId, 'cancelled');
       if (!updated) {
-        await ctx.answerCallbackQuery({ text: 'Запис не знайдено', show_alert: true });
+        await ctx.answerCallbackQuery({ text: d.bookingNotFound, show_alert: true });
         return;
       }
-      await ctx.answerCallbackQuery({ text: 'Запис скасовано' });
-      await safeEditMessage(ctx, '❌ Запис скасовано адміністратором.');
+      await ctx.answerCallbackQuery({ text: d.bookingCancelled.replace('❌ ', '') });
+      await safeEditMessage(ctx, d.bookingCancelledAdmin);
       return;
     }
 
@@ -95,17 +145,17 @@ export function setupBotHandlers(bot: Bot, salonId: string): void {
       const bookingId = data.slice('confirm_'.length);
       const isAllowed = await ensureAdminCallback(ctx.chat?.id, salonId);
       if (!isAllowed) {
-        await ctx.answerCallbackQuery({ text: 'Недостатньо прав', show_alert: true });
+        await ctx.answerCallbackQuery({ text: d.insufficientRights, show_alert: true });
         return;
       }
 
       const updated = await updateBookingStatus(bookingId, salonId, 'confirmed');
       if (!updated) {
-        await ctx.answerCallbackQuery({ text: 'Запис не знайдено', show_alert: true });
+        await ctx.answerCallbackQuery({ text: d.bookingNotFound, show_alert: true });
         return;
       }
-      await ctx.answerCallbackQuery({ text: 'Запис підтверджено' });
-      await safeEditMessage(ctx, '✅ Запис підтверджено.');
+      await ctx.answerCallbackQuery({ text: d.bookingConfirmed.replace('✅ ', '') });
+      await safeEditMessage(ctx, d.bookingConfirmed);
       return;
     }
 
@@ -113,17 +163,17 @@ export function setupBotHandlers(bot: Bot, salonId: string): void {
       const bookingId = data.slice('cancel_'.length);
       const isOwner = await ensureCustomerCallback(ctx.from?.id, bookingId, salonId);
       if (!isOwner) {
-        await ctx.answerCallbackQuery({ text: 'Недостатньо прав', show_alert: true });
+        await ctx.answerCallbackQuery({ text: d.insufficientRights, show_alert: true });
         return;
       }
 
       const updated = await updateBookingStatus(bookingId, salonId, 'cancelled');
       if (!updated) {
-        await ctx.answerCallbackQuery({ text: 'Запис не знайдено', show_alert: true });
+        await ctx.answerCallbackQuery({ text: d.bookingNotFound, show_alert: true });
         return;
       }
-      await ctx.answerCallbackQuery({ text: 'Запис скасовано' });
-      await safeEditMessage(ctx, '❌ Запис скасовано.');
+      await ctx.answerCallbackQuery({ text: d.bookingCancelled.replace('❌ ', '') });
+      await safeEditMessage(ctx, d.bookingCancelled);
       return;
     }
 

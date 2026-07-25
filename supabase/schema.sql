@@ -14,6 +14,7 @@ CREATE TABLE salons (
   admin_chat_id TEXT,
   owner_telegram_id BIGINT NOT NULL,
   timezone TEXT NOT NULL DEFAULT 'Europe/Kyiv',
+  language TEXT NOT NULL DEFAULT 'uk' CHECK (language IN ('uk', 'ru', 'en')),
   is_active BOOLEAN DEFAULT true,
   reminders_enabled BOOLEAN NOT NULL DEFAULT true,
   review_request_enabled BOOLEAN NOT NULL DEFAULT false,

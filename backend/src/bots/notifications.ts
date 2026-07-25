@@ -1,5 +1,6 @@
 import { supabase } from '../db/client';
 import { botManager } from './BotManager';
+import { getUserBotLanguage, localeForLang, t } from './i18n';
 
 export async function sendBookingNotifications(
   salonId: string,
@@ -19,16 +20,18 @@ export async function sendBookingNotifications(
   }
 
   const dt = new Date(datetime);
-  const formatted = dt.toLocaleString('uk-UA');
 
   if (clientTelegramId) {
     try {
+      const lang = await getUserBotLanguage(salonId, clientTelegramId);
+      const d = t(lang);
+      const formatted = dt.toLocaleString(localeForLang(lang));
       await bot.api.sendMessage(
         clientTelegramId,
-        `✅ Запис прийнято!\n📅 ${formatted}\n✂️ ${serviceName}\n👤 Майстер: ${masterName}\n📍 ${salonAddress}\n\nОчікує підтвердження салону.`,
+        `${d.bookingAccepted}\n📅 ${formatted}\n✂️ ${serviceName}\n👤 ${d.master}: ${masterName}\n📍 ${salonAddress}\n\n${d.awaitingConfirm}`,
         {
           reply_markup: {
-            inline_keyboard: [[{ text: '❌ Скасувати запис', callback_data: `cancel_${bookingId}` }]],
+            inline_keyboard: [[{ text: d.cancelBooking, callback_data: `cancel_${bookingId}` }]],
           },
         }
       );
@@ -46,10 +49,11 @@ export async function sendBookingNotifications(
   if (!salon?.admin_chat_id) return;
 
   const source = clientTelegramId ? 'Telegram' : 'Сайт / Viber / Instagram';
+  const formattedUk = dt.toLocaleString('uk-UA');
   try {
     await bot.api.sendMessage(
       salon.admin_chat_id,
-      `📅 НОВИЙ ЗАПИС (${source})\n👤 ${clientName} | 📞 ${clientPhone ?? '—'}\n✂️ ${serviceName} — ${masterName}\n🕐 ${formatted}`,
+      `📅 НОВИЙ ЗАПИС (${source})\n👤 ${clientName} | 📞 ${clientPhone ?? '—'}\n✂️ ${serviceName} — ${masterName}\n🕐 ${formattedUk}`,
       {
         reply_markup: {
           inline_keyboard: [

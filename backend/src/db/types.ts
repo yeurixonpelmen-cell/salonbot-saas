@@ -8,6 +8,7 @@ export interface Salon {
   admin_chat_id: string | null;
   owner_telegram_id: number;
   timezone: string;
+  language?: 'uk' | 'ru' | 'en';
   is_active: boolean;
   reminders_enabled?: boolean;
   review_request_enabled?: boolean;

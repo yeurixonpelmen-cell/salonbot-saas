@@ -755,12 +755,13 @@ router.post('/onboarding/complete', onboardingLimiter, async (req: Request, res:
 
 router.use('/admin', adminLimiter, authMiddleware);
 
+const SALON_SETTINGS_SELECT =
+  'id, name_uk, name_en, address, logo_url, bot_username, admin_chat_id, timezone, language, reminders_enabled, review_request_enabled, google_maps_url';
+
 router.get('/admin/salon', async (req: Request, res: Response) => {
   const { data } = await supabase
     .from('salons')
-    .select(
-      'id, name_uk, name_en, address, logo_url, bot_username, admin_chat_id, timezone, reminders_enabled, review_request_enabled, google_maps_url'
-    )
+    .select(SALON_SETTINGS_SELECT)
     .eq('id', req.auth!.salon_id!)
     .single();
 
@@ -774,6 +775,7 @@ router.patch('/admin/salon', async (req: Request, res: Response) => {
     address,
     logo_url,
     admin_chat_id,
+    language,
     reminders_enabled,
     review_request_enabled,
     google_maps_url,
@@ -786,6 +788,14 @@ router.patch('/admin/salon', async (req: Request, res: Response) => {
     logo_url,
     admin_chat_id,
   };
+  if (typeof language === 'string') {
+    const normalized = language.trim().toLowerCase();
+    if (!['uk', 'ru', 'en'].includes(normalized)) {
+      res.status(400).json({ error: 'Мова має бути uk, ru або en' });
+      return;
+    }
+    update.language = normalized;
+  }
   if (typeof reminders_enabled === 'boolean') update.reminders_enabled = reminders_enabled;
   if (typeof review_request_enabled === 'boolean') {
     update.review_request_enabled = review_request_enabled;
@@ -803,9 +813,7 @@ router.patch('/admin/salon', async (req: Request, res: Response) => {
     .from('salons')
     .update(update)
     .eq('id', req.auth!.salon_id!)
-    .select(
-      'id, name_uk, name_en, address, logo_url, bot_username, admin_chat_id, timezone, reminders_enabled, review_request_enabled, google_maps_url'
-    )
+    .select(SALON_SETTINGS_SELECT)
     .single();
 
   if (error) {

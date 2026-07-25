@@ -43,6 +43,7 @@ export function SettingsPage() {
         address: settings.address,
         logo_url: settings.logo_url,
         admin_chat_id: settings.admin_chat_id,
+        language: settings.language ?? 'uk',
         reminders_enabled: settings.reminders_enabled ?? true,
         review_request_enabled: settings.review_request_enabled ?? false,
         google_maps_url: settings.google_maps_url ?? null,
@@ -94,6 +95,27 @@ export function SettingsPage() {
       {error && <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-red-800">{error}</div>}
 
       <form onSubmit={submit} className="bg-white border rounded-2xl p-5 space-y-4 settings-card">
+        <label className="block space-y-1">
+          <span className="text-sm text-gray-600 settings-muted">Мова бота (Telegram)</span>
+          <select
+            className="w-full border rounded-lg p-3 bg-white"
+            value={settings.language ?? 'uk'}
+            onChange={(e) =>
+              setSettings({
+                ...settings,
+                language: e.target.value as 'uk' | 'ru' | 'en',
+              })
+            }
+          >
+            <option value="uk">Українська</option>
+            <option value="ru">Русский</option>
+            <option value="en">English</option>
+          </select>
+          <span className="text-xs text-gray-500 settings-muted">
+            Мова за замовчуванням для клієнтів. У боті також є /language і кнопки на /start.
+          </span>
+        </label>
+
         <Input
           label="Назва салону (укр) *"
           value={settings.name_uk}
