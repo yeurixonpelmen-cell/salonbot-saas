@@ -120,13 +120,13 @@ export function SettingsPage() {
 
         <div>
           <div className="text-sm text-gray-600 mb-2 settings-muted">{t('settings_logo')}</div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col items-start gap-2">
             {settings.logo_url ? (
               <img src={settings.logo_url} alt="" className="w-16 h-16 rounded-xl object-cover border" />
             ) : (
-              <div className="w-16 h-16 rounded-xl bg-gray-100 border flex items-center justify-center">📷</div>
+              <div className="w-16 h-16 rounded-xl bg-gray-100 border" />
             )}
-            <label className="px-4 py-2 rounded-lg border cursor-pointer bg-white hover:bg-gray-50">
+            <label className="px-4 py-2 rounded-lg border cursor-pointer bg-white hover:bg-gray-50 text-sm">
               {uploading ? t('settings_uploading') : t('settings_upload')}
               <input type="file" accept="image/*" onChange={uploadLogo} className="hidden" />
             </label>
