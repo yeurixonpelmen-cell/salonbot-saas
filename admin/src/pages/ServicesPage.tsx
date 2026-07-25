@@ -1,10 +1,12 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { api, Master, Service, ServicePayload } from '../api';
 import { Button } from '../components/ui';
+import { useLocale } from '../context/LocaleContext';
 
 type ServiceDraft = Partial<ServicePayload> & { id?: string };
 
 export function ServicesPage() {
+  const { t } = useLocale();
   const [services, setServices] = useState<Service[]>([]);
   const [masters, setMasters] = useState<Master[]>([]);
   const [draft, setDraft] = useState<ServiceDraft | null>(null);
@@ -42,9 +44,9 @@ export function ServicesPage() {
     <div className="page-stack">
       <header className="page-header">
         <div>
-          <span className="eyebrow">Прайс</span>
-          <h1>Послуги</h1>
-          <p>Тривалість, ціна і прив’язка до спеціалістів</p>
+          <span className="eyebrow">{t('services_eyebrow')}</span>
+          <h1>{t('services_title')}</h1>
+          <p>{t('services_sub')}</p>
         </div>
         <Button
           onClick={() =>
@@ -58,7 +60,7 @@ export function ServicesPage() {
             })
           }
         >
-          + Додати
+          {t('services_add')}
         </Button>
       </header>
 

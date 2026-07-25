@@ -12,6 +12,7 @@ import {
   type ScheduleAddDraft,
 } from '../components/ScheduleGrid';
 import { Button, Drawer, Input, Modal } from '../components/ui';
+import { useLocale } from '../context/LocaleContext';
 import {
   DEFAULT_SALON_TIMEZONE,
   toDateTimeLocalValue,
@@ -23,6 +24,7 @@ const VISIT_STATUSES: VisitStatus[] = ['scheduled', 'first_visit', 'waiting', 'i
 const BOOKING_STATUSES: BookingStatus[] = ['pending', 'confirmed', 'cancelled', 'completed'];
 
 export function SchedulePage() {
+  const { t } = useLocale();
   const [timeZone, setTimeZone] = useState(DEFAULT_SALON_TIMEZONE);
   const [date, setDate] = useState(() => todayInTimeZone(DEFAULT_SALON_TIMEZONE));
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -195,8 +197,8 @@ export function SchedulePage() {
     <div className="page-stack">
       <header className="schedule-page-header">
         <div>
-          <span className="eyebrow">Календар команди</span>
-          <h1>Розклад</h1>
+          <span className="eyebrow">{t('schedule_eyebrow')}</span>
+          <h1>{t('schedule_title')}</h1>
           <p>{formatDisplayDate(date)} · {bookings.length} записів</p>
         </div>
         <Button

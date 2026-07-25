@@ -1,6 +1,7 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { api, Master, MasterPayload, MasterPortfolioItem, ScheduleRow } from '../api';
 import { Button } from '../components/ui';
+import { useLocale } from '../context/LocaleContext';
 
 const DAYS = [
   { id: 1, label: 'Пн' },
@@ -26,6 +27,7 @@ function emptyDraft(): MasterDraft {
 }
 
 export function MastersPage() {
+  const { t } = useLocale();
   const [masters, setMasters] = useState<Master[]>([]);
   const [draft, setDraft] = useState<MasterDraft | null>(null);
   const [scheduleMaster, setScheduleMaster] = useState<Master | null>(null);
@@ -58,11 +60,11 @@ export function MastersPage() {
     <div className="page-stack">
       <header className="page-header">
         <div>
-          <span className="eyebrow">Команда</span>
-          <h1>Спеціалісти</h1>
-          <p>Графік, посада і портфоліо</p>
+          <span className="eyebrow">{t('masters_eyebrow')}</span>
+          <h1>{t('masters_title')}</h1>
+          <p>{t('masters_sub')}</p>
         </div>
-        <Button onClick={() => setDraft(emptyDraft())}>+ Додати</Button>
+        <Button onClick={() => setDraft(emptyDraft())}>{t('masters_add')}</Button>
       </header>
 
       {error && <div className="notice-error">{error}</div>}

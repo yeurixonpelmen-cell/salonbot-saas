@@ -1,12 +1,14 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useLocale } from '../context/LocaleContext';
 import { Button, Input } from '../components/ui';
 
 const BOT_USERNAME = import.meta.env.VITE_LOGIN_BOT_USERNAME ?? 'salonbot_login_bot';
 
 export function LoginPage() {
   const { login, loginWithEmail, isAuthenticated } = useAuth();
+  const { t, lang, setLang } = useLocale();
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<'email' | 'telegram'>('email');
@@ -69,17 +71,17 @@ export function LoginPage() {
           <span className="brand-mark">SB</span>
           <div style={{ textAlign: 'left' }}>
             SalonBot
-            <small>Кабінет салону</small>
+            <small>{t('brand_sub')}</small>
           </div>
         </div>
-        <p className="login-sub">Увійдіть, щоб відкрити розклад і клієнтів</p>
+        <p className="login-sub">{t('login_sub')}</p>
 
         <div className="login-tabs">
           <button type="button" className={mode === 'email' ? 'active' : ''} onClick={() => setMode('email')}>
-            Email
+            {t('login_tab_email')}
           </button>
           <button type="button" className={mode === 'telegram' ? 'active' : ''} onClick={() => setMode('telegram')}>
-            Telegram
+            {t('login_tab_telegram')}
           </button>
         </div>
 
@@ -88,24 +90,43 @@ export function LoginPage() {
         {mode === 'email' ? (
           <form onSubmit={submitEmail} className="form-grid" style={{ gridTemplateColumns: '1fr', textAlign: 'left' }}>
             <label className="full">
-              Email
+              {t('login_email')}
               <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
             </label>
             <label className="full">
-              Пароль
+              {t('login_password')}
               <Input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
             </label>
             <Button type="submit" className="full" disabled={loading}>
-              {loading ? 'Вхід…' : 'Увійти'}
+              {loading ? t('login_loading') : t('login_submit')}
             </Button>
           </form>
         ) : (
           <div ref={containerRef} className="flex justify-center" />
         )}
 
+        <div className="client-period-presets" style={{ justifyContent: 'center', marginTop: 16 }}>
+          {(
+            [
+              ['uk', 'lang_uk'],
+              ['ru', 'lang_ru'],
+              ['en', 'lang_en'],
+            ] as const
+          ).map(([code, key]) => (
+            <button
+              key={code}
+              type="button"
+              className={`chip-btn${lang === code ? ' active' : ''}`}
+              onClick={() => setLang(code)}
+            >
+              {t(key)}
+            </button>
+          ))}
+        </div>
+
         <p className="login-sub" style={{ marginTop: 18, marginBottom: 0 }}>
-          Новий салон через Telegram?{' '}
-          <Link to="/onboarding" className="text-link">Підключитись</Link>
+          {t('login_onboarding')}{' '}
+          <Link to="/onboarding" className="text-link">{t('login_connect')}</Link>
         </p>
       </div>
     </div>

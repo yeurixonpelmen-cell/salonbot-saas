@@ -24,12 +24,11 @@ async function replyWelcome(ctx: Context, salonId: string, miniAppBase: string, 
   const webAppUrl = `${miniAppBase}?salon=${salonId}&lang=${lang}`;
   await ctx.reply(d.welcome, {
     reply_markup: {
-      inline_keyboard: [
-        [{ text: d.openBooking, web_app: { url: webAppUrl } }],
-        ...languageKeyboard(lang).inline_keyboard,
-      ],
+      inline_keyboard: [[{ text: d.openBooking, web_app: { url: webAppUrl } }]],
     },
   });
+  // Language buttons in a separate message below the booking CTA
+  await ctx.reply(d.chooseLanguage, { reply_markup: languageKeyboard(lang) });
 }
 
 export function setupBotHandlers(bot: Bot, salonId: string): void {

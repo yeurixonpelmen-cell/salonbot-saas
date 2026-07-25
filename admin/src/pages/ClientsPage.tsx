@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, Client, ClientPayload, ClientsListResponse } from '../api';
 import { Button, Input, Modal } from '../components/ui';
+import { useLocale } from '../context/LocaleContext';
 
 type PeriodPreset = '7d' | '30d' | 'month' | 'custom';
 type Segment = 'all' | 'new' | 'old';
@@ -52,6 +53,7 @@ function triToQuery(value: TriState): string | null {
 }
 
 export function ClientsPage() {
+  const { t } = useLocale();
   const [clients, setClients] = useState<Client[]>([]);
   const [summary, setSummary] = useState<ClientsListResponse['summary'] | null>(null);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
@@ -153,9 +155,9 @@ export function ClientsPage() {
       <header className="page-header">
         <div>
           <span className="eyebrow">CRM</span>
-          <h1>Клієнти</h1>
+          <h1>{t('clients_title')}</h1>
         </div>
-        <Button onClick={() => setShowCreate(true)}>+ Додати клієнта</Button>
+        <Button onClick={() => setShowCreate(true)}>{t('clients_add')}</Button>
       </header>
 
       <section className="content-card client-toolbar">
@@ -165,8 +167,8 @@ export function ClientsPage() {
             <Input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Пошук"
-              aria-label="Пошук"
+              placeholder={t('clients_search')}
+              aria-label={t('clients_search')}
             />
           </label>
           <Button
@@ -174,7 +176,7 @@ export function ClientsPage() {
             variant="secondary"
             onClick={() => setShowFilters((prev) => !prev)}
           >
-            Фільтри{activeFilterCount ? ` (${activeFilterCount})` : ''}
+            {t('clients_filters')}{activeFilterCount ? ` (${activeFilterCount})` : ''}
           </Button>
           <span>{summary?.total ?? clients.length}</span>
         </div>

@@ -1,12 +1,13 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useLocale } from '../context/LocaleContext';
 
 const nav = [
-  { to: '/', label: 'Розклад', icon: 'calendar', end: true },
-  { to: '/clients', label: 'Клієнти', icon: 'users' },
-  { to: '/masters', label: 'Спеціалісти', icon: 'user' },
-  { to: '/services', label: 'Послуги', icon: 'spark' },
-  { to: '/settings', label: 'Налаштування', icon: 'gear' },
+  { to: '/', labelKey: 'nav_schedule', icon: 'calendar', end: true },
+  { to: '/clients', labelKey: 'nav_clients', icon: 'users' },
+  { to: '/masters', labelKey: 'nav_masters', icon: 'user' },
+  { to: '/services', labelKey: 'nav_services', icon: 'spark' },
+  { to: '/settings', labelKey: 'nav_settings', icon: 'gear' },
 ] as const;
 
 function NavIcon({ name }: { name: (typeof nav)[number]['icon'] | 'logout' }) {
@@ -70,6 +71,7 @@ function NavIcon({ name }: { name: (typeof nav)[number]['icon'] | 'logout' }) {
 
 export function Layout() {
   const { logout } = useAuth();
+  const { t } = useLocale();
 
   return (
     <div className="app-shell">
@@ -78,7 +80,7 @@ export function Layout() {
           <span className="brand-mark" aria-hidden>SB</span>
           <div>
             SalonBot
-            <small>Розклад · CRM</small>
+            <small>{t('brand_sub')}</small>
           </div>
         </div>
         <nav className="desktop-nav">
@@ -90,13 +92,13 @@ export function Layout() {
               className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
             >
               <i><NavIcon name={item.icon} /></i>
-              {item.label}
+              {t(item.labelKey)}
             </NavLink>
           ))}
         </nav>
         <button type="button" onClick={logout} className="logout-button">
           <NavIcon name="logout" />
-          <span>Вийти</span>
+          <span>{t('nav_logout')}</span>
         </button>
       </aside>
 
@@ -113,7 +115,7 @@ export function Layout() {
             className={({ isActive }) => (isActive ? 'active' : '')}
           >
             <i><NavIcon name={item.icon} /></i>
-            <span>{item.label}</span>
+            <span>{t(item.labelKey)}</span>
           </NavLink>
         ))}
       </nav>
