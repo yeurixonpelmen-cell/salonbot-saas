@@ -493,7 +493,10 @@ function BookingForm({
   useEffect(() => {
     const id = window.setTimeout(() => {
       if (!query.trim()) return setClients([]);
-      api.get<Client[]>(`/api/admin/clients?search=${encodeURIComponent(query)}`).then(setClients).catch(() => setClients([]));
+      api
+        .get<{ clients: Client[] } | Client[]>(`/api/admin/clients?search=${encodeURIComponent(query)}`)
+        .then((data) => setClients(Array.isArray(data) ? data : data.clients ?? []))
+        .catch(() => setClients([]));
     }, 250);
     return () => window.clearTimeout(id);
   }, [query]);

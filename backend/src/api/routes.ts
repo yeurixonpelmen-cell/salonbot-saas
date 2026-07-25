@@ -838,50 +838,201 @@ router.post('/admin/salon/logo', upload.single('logo'), async (req: Request, res
   res.json({ url: urlData.publicUrl });
 });
 
+function parseClientsQueryFlag(value: unknown): boolean | null {
+  if (value === undefined || value === null || value === '') return null;
+  const raw = String(value).trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(raw)) return true;
+  if (['0', 'false', 'no', 'off'].includes(raw)) return false;
+  return null;
+}
+
+function normalizeClientSearchText(value: string): string {
+  return value
+    .toLocaleLowerCase('uk')
+    .replace(/[^a-zа-яёіїєґ0-9]+/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function clientSearchBlob(client: {
+  full_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  general_notes?: string | null;
+  tags?: string[] | null;
+}): string {
+  return normalizeClientSearchText(
+    [client.full_name, client.phone, client.email, client.general_notes, ...(client.tags ?? [])]
+      .filter(Boolean)
+      .join(' ')
+  );
+}
+
+function clientMatchesSearch(
+  client: {
+    full_name?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    general_notes?: string | null;
+    tags?: string[] | null;
+  },
+  search: string
+): boolean {
+  const q = search.trim();
+  if (!q) return true;
+  const blob = clientSearchBlob(client);
+  const compactBlob = blob.replace(/\s+/g, '');
+  const tokens = normalizeClientSearchText(q).split(' ').filter(Boolean);
+  const textOk = !tokens.length || tokens.every((token) => blob.includes(token) || compactBlob.includes(token.replace(/\s+/g, '')));
+  const digits = q.replace(/\D+/g, '');
+  const phoneDigits = (client.phone ?? '').replace(/\D+/g, '');
+  const phoneOk = digits.length >= 3 && phoneDigits.includes(digits);
+  return textOk || phoneOk;
+}
+
 router.get('/admin/clients', async (req: Request, res: Response) => {
   const search = typeof req.query.search === 'string'
     ? req.query.search.trim().replace(/[,%()]/g, '')
     : '';
+  const segmentRaw = typeof req.query.segment === 'string' ? req.query.segment.trim().toLowerCase() : 'all';
+  const segment = segmentRaw === 'new' || segmentRaw === 'old' ? segmentRaw : 'all';
+  const tag = typeof req.query.tag === 'string' ? req.query.tag.trim() : '';
+  const visits = typeof req.query.visits === 'string' ? req.query.visits.trim().toLowerCase() : 'all';
+  const hasPhone = parseClientsQueryFlag(req.query.has_phone);
+  const hasEmail = parseClientsQueryFlag(req.query.has_email);
+  const hasTelegram = parseClientsQueryFlag(req.query.has_telegram);
+  const hasNotes = parseClientsQueryFlag(req.query.has_notes);
+  const hasDob = parseClientsQueryFlag(req.query.has_dob);
+  const legacy = req.query.legacy === '1' || req.query.legacy === 'true';
+
+  const now = new Date();
+  let periodTo = typeof req.query.created_to === 'string' && req.query.created_to.trim()
+    ? new Date(req.query.created_to)
+    : now;
+  let periodFrom = typeof req.query.created_from === 'string' && req.query.created_from.trim()
+    ? new Date(req.query.created_from)
+    : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  if (Number.isNaN(periodFrom.getTime())) periodFrom = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  if (Number.isNaN(periodTo.getTime())) periodTo = now;
+  if (periodFrom > periodTo) {
+    const swap = periodFrom;
+    periodFrom = periodTo;
+    periodTo = swap;
+  }
+  // Inclusive end-of-day for date-only values
+  if (typeof req.query.created_to === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.created_to.trim())) {
+    periodTo = new Date(`${req.query.created_to.trim()}T23:59:59.999`);
+  }
+  if (typeof req.query.created_from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.created_from.trim())) {
+    periodFrom = new Date(`${req.query.created_from.trim()}T00:00:00.000`);
+  }
+
   let query = supabase
     .from('clients')
     .select('*')
-    .eq('salon_id', req.auth!.salon_id!);
-  if (search) {
-    query = query.or(
-      `full_name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%`
-    );
-  }
-  const { data, error } = await query.order('updated_at', { ascending: false });
+    .eq('salon_id', req.auth!.salon_id!)
+    .order('updated_at', { ascending: false })
+    .limit(2000);
+
+  const { data, error } = await query;
   if (error) {
     res.status(500).json({ error: error.message });
     return;
   }
-  const clients = data ?? [];
-  if (!clients.length) {
-    res.json([]);
+
+  let clients = data ?? [];
+  const availableTags = Array.from(
+    new Set(clients.flatMap((client) => (Array.isArray(client.tags) ? client.tags : [])))
+  ).sort((a, b) => a.localeCompare(b, 'uk'));
+
+  if (tag) {
+    const tagNorm = tag.toLocaleLowerCase('uk');
+    clients = clients.filter((client) =>
+      (client.tags ?? []).some((item: string) => String(item).toLocaleLowerCase('uk') === tagNorm)
+    );
+  }
+
+  const hasText = (value: unknown) => Boolean(typeof value === 'string' ? value.trim() : value);
+
+  if (hasPhone === true) clients = clients.filter((c) => hasText(c.phone));
+  if (hasPhone === false) clients = clients.filter((c) => !hasText(c.phone));
+  if (hasEmail === true) clients = clients.filter((c) => hasText(c.email));
+  if (hasEmail === false) clients = clients.filter((c) => !hasText(c.email));
+  if (hasTelegram === true) clients = clients.filter((c) => c.telegram_id != null);
+  if (hasTelegram === false) clients = clients.filter((c) => c.telegram_id == null);
+  if (hasNotes === true) clients = clients.filter((c) => hasText(c.general_notes));
+  if (hasNotes === false) clients = clients.filter((c) => !hasText(c.general_notes));
+  if (hasDob === true) clients = clients.filter((c) => Boolean(c.date_of_birth));
+  if (hasDob === false) clients = clients.filter((c) => !c.date_of_birth);
+
+  if (search) {
+    clients = clients.filter((client) => clientMatchesSearch(client, search));
+  }
+
+  const clientIds = clients.map((client) => client.id);
+  const stats = new Map<string, { count: number; last: string | null }>();
+  if (clientIds.length) {
+    const { data: visitsRows } = await supabase
+      .from('bookings')
+      .select('client_id, booking_datetime, status')
+      .eq('salon_id', req.auth!.salon_id!)
+      .in('client_id', clientIds)
+      .neq('status', 'cancelled')
+      .order('booking_datetime', { ascending: false });
+    for (const visit of visitsRows ?? []) {
+      if (!visit.client_id) continue;
+      const current = stats.get(visit.client_id) ?? { count: 0, last: null };
+      current.count += 1;
+      current.last ??= visit.booking_datetime;
+      stats.set(visit.client_id, current);
+    }
+  }
+
+  let enriched = clients.map((client) => {
+    const createdAt = client.created_at ? new Date(client.created_at) : null;
+    const isNewInPeriod = Boolean(
+      createdAt && createdAt >= periodFrom && createdAt <= periodTo
+    );
+    return {
+      ...client,
+      initials: clientInitials(client.full_name),
+      visits_count: stats.get(client.id)?.count ?? 0,
+      last_visit_at: stats.get(client.id)?.last ?? null,
+      is_new_in_period: isNewInPeriod,
+    };
+  });
+
+  const newInPeriod = enriched.filter((client) => client.is_new_in_period).length;
+  const oldInPeriod = enriched.length - newInPeriod;
+
+  if (segment === 'new') {
+    enriched = enriched.filter((client) => client.is_new_in_period);
+  } else if (segment === 'old') {
+    enriched = enriched.filter((client) => !client.is_new_in_period);
+  }
+
+  if (visits === 'none') {
+    enriched = enriched.filter((client) => (client.visits_count ?? 0) === 0);
+  } else if (visits === 'some') {
+    enriched = enriched.filter((client) => (client.visits_count ?? 0) >= 1);
+  } else if (visits === 'many') {
+    enriched = enriched.filter((client) => (client.visits_count ?? 0) >= 5);
+  }
+
+  const summary = {
+    total: enriched.length,
+    new_in_period: newInPeriod,
+    old_in_period: oldInPeriod,
+    period_from: periodFrom.toISOString(),
+    period_to: periodTo.toISOString(),
+  };
+
+  if (legacy) {
+    res.json(enriched);
     return;
   }
-  const { data: visits } = await supabase
-    .from('bookings')
-    .select('client_id, booking_datetime, status')
-    .eq('salon_id', req.auth!.salon_id!)
-    .in('client_id', clients.map((client) => client.id))
-    .neq('status', 'cancelled')
-    .order('booking_datetime', { ascending: false });
-  const stats = new Map<string, { count: number; last: string | null }>();
-  for (const visit of visits ?? []) {
-    if (!visit.client_id) continue;
-    const current = stats.get(visit.client_id) ?? { count: 0, last: null };
-    current.count += 1;
-    current.last ??= visit.booking_datetime;
-    stats.set(visit.client_id, current);
-  }
-  res.json(clients.map((client) => ({
-    ...client,
-    initials: clientInitials(client.full_name),
-    visits_count: stats.get(client.id)?.count ?? 0,
-    last_visit_at: stats.get(client.id)?.last ?? null,
-  })));
+
+  res.json({ clients: enriched, summary, available_tags: availableTags });
 });
 
 router.post('/admin/clients', async (req: Request, res: Response) => {

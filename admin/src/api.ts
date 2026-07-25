@@ -116,7 +116,22 @@ export interface Client {
   visits_count?: number;
   last_visit_at?: string | null;
   created_at?: string;
+  is_new_in_period?: boolean;
   bookings?: Booking[];
+}
+
+export interface ClientsListSummary {
+  total: number;
+  new_in_period: number;
+  old_in_period: number;
+  period_from: string | null;
+  period_to: string | null;
+}
+
+export interface ClientsListResponse {
+  clients: Client[];
+  summary: ClientsListSummary;
+  available_tags: string[];
 }
 
 export interface ClientFile {

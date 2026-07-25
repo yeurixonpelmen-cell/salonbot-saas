@@ -150,11 +150,28 @@ html[data-theme='dark'] .view-toggle button.active {
 .client-results button { display: flex; justify-content: space-between; border: 0; border-bottom: 1px solid #edf0f4; padding: 10px; background: #fff; text-align: left; cursor: pointer; }.client-results button:hover { background: #f5f8ff; }.client-results span { color: #8790a2; }
 .selected-client { padding: 9px 11px; border-radius: 7px; color: #267755; background: #eaf7f1; font-size: 12px; }
 
-.client-search { display: flex; align-items: center; gap: 15px; padding: 12px; }.client-search .ui-input { max-width: 540px; }.client-search span { color: #8992a4; font-size: 12px; white-space: nowrap; }
+.client-toolbar { display: grid; gap: 12px; padding: 14px; }
+.client-search { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }.client-search .ui-input { flex: 1 1 260px; min-width: 200px; max-width: 640px; }.client-search span { color: #8992a4; font-size: 12px; white-space: nowrap; }
+.client-period-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding-top: 4px; border-top: 1px solid #edf0f4; }
+.client-period-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-btn { border: 1px solid #d7dde8; border-radius: 999px; padding: 6px 10px; background: #fff; color: #4f596d; font-size: 11px; cursor: pointer; }
+.chip-btn.active { border-color: #3569dc; color: #274ea8; background: #eaf1ff; font-weight: 650; }
+.client-period-custom { display: flex; flex-wrap: wrap; gap: 10px; }
+.client-period-custom label { display: grid; gap: 4px; color: #6b7385; font-size: 11px; }
+.client-period-custom .ui-input { width: 150px; }
+.client-period-stats { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 10px; margin-left: auto; color: #5c6578; font-size: 12px; }
+.client-period-stats strong { color: #1f2a3d; font-size: 22px; line-height: 1; }
+.text-link { border: 0; padding: 0; background: transparent; color: #3569dc; font-size: 12px; cursor: pointer; }
+.text-link:hover { text-decoration: underline; }
+.client-filters-panel { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; padding-top: 10px; border-top: 1px solid #edf0f4; }
+.client-filters-panel label { display: grid; gap: 5px; color: #667084; font-size: 11px; }
+.client-filters-panel select { width: 100%; border: 1px solid #d7dde8; border-radius: 8px; padding: 8px 10px; background: #fff; color: #243049; font-size: 12px; }
+.client-filters-actions { display: flex; align-items: end; }
 .clients-list { display: grid; overflow: hidden; border: 1px solid #e1e5ec; border-radius: 13px; background: #fff; }
 .client-row { display: grid; grid-template-columns: 46px minmax(180px, 1.5fr) minmax(120px, 1fr) 70px 70px 24px; gap: 12px; align-items: center; min-height: 72px; padding: 10px 18px; border-bottom: 1px solid #eceff3; transition: background .12s; }
 .client-row:last-child { border: 0; }.client-row:hover { background: #f8faff; }
-.client-main { display: grid; gap: 3px; }.client-main strong { font-size: 13px; }.client-main span { color: #7e8799; font-size: 11px; }
+.client-main { display: grid; gap: 3px; }.client-main strong { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; }.client-main > span { color: #7e8799; font-size: 11px; }
+.client-new-badge { padding: 2px 6px; border-radius: 999px; color: #1f6b4a; background: #e5f7ee; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
 .client-tags { display: flex; flex-wrap: wrap; gap: 4px; }.client-tags span { padding: 3px 6px; border-radius: 5px; color: #6b54a0; background: #f0ebfa; font-size: 9px; }
 .client-stat { display: grid; text-align: center; }.client-stat strong { font-size: 13px; }.client-stat span { color: #929aaa; font-size: 9px; }.row-arrow { color: #9da6b7; }
 .empty-state { display: grid; justify-items: center; gap: 4px; padding: 50px 20px; color: #788296; font-size: 12px; }.empty-state b { color: #3c4659; font-size: 14px; }.empty-state.compact { padding: 25px 10px; }
@@ -250,6 +267,10 @@ html[data-theme='dark'] .client-row {
   color: #e6e8ee;
 }
 html[data-theme='dark'] .client-row:hover { background: #3d404b; }
+html[data-theme='dark'] .chip-btn { background: #2f3138; border-color: #555866; color: #d5d8e0; }
+html[data-theme='dark'] .chip-btn.active { background: #3a455c; border-color: #7ea2ef; color: #c9d8ff; }
+html[data-theme='dark'] .client-filters-panel select { background: #2f3138; border-color: #555866; color: #e6e8ee; }
+html[data-theme='dark'] .client-new-badge { background: #2f4a3d; color: #9ed9b8; }
 html[data-theme='dark'] .client-main strong,
 html[data-theme='dark'] .client-stat strong,
 html[data-theme='dark'] .row-arrow {
