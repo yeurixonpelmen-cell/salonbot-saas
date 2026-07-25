@@ -70,6 +70,8 @@ ENCRYPTION_KEY=...
 JWT_SECRET=...
 JWT_EXPIRES_IN=7d
 SUPER_ADMIN_PASSWORD=choose-a-long-secret
+RESEND_API_KEY=re_xxxxxxxx
+EMAIL_FROM=SalonBot <onboarding@resend.dev>
 ADMIN_LOGIN_BOT_TOKEN=...
 WEBHOOK_URL=https://your-backend.railway.app
 TELEGRAM_WEBHOOK_SECRET=...
@@ -82,12 +84,18 @@ TZ=Europe/Kyiv
 ### Super Admin (platform owner)
 
 1. Set `SUPER_ADMIN_PASSWORD` on Railway backend.
-2. Open `https://your-admin.vercel.app/super/login`.
-3. Create a salon + paste BotFather token + staff emails.
-4. Copy temporary passwords shown once and send them to the clinic.
-5. Staff open `/login` → Email tab → sign in.
+2. Optional but recommended: Resend for staff emails
+   - Create account at https://resend.com → API Key → `RESEND_API_KEY`
+   - While testing you can use `EMAIL_FROM=SalonBot <onboarding@resend.dev>` (sends mostly to your own Resend account email)
+   - For real clinic emails: verify your domain in Resend and set `EMAIL_FROM=SalonBot <noreply@yourdomain.com>`
+3. Open `https://your-admin.vercel.app/super/login`.
+4. Create a salon + paste BotFather token + staff emails.
+5. Staff get invite email (or you copy backup password from Super Admin UI).
+6. Staff open `/login` → Email tab → sign in.
 
-Also run migration `supabase/migrations/005_salon_staff.sql` in Supabase SQL Editor.
+Also run migrations in Supabase SQL Editor:
+- `supabase/migrations/005_salon_staff.sql`
+- `supabase/migrations/006_rooms.sql`
 
 After deploy, check:
 

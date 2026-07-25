@@ -83,7 +83,9 @@ export function SuperAdminPage() {
   const [loading, setLoading] = useState(true);
   const [selectedSalonId, setSelectedSalonId] = useState<string | null>(null);
   const [staff, setStaff] = useState<StaffRow[]>([]);
-  const [createdPasswords, setCreatedPasswords] = useState<{ email: string; temporaryPassword: string }[]>([]);
+  const [createdPasswords, setCreatedPasswords] = useState<
+    { email: string; temporaryPassword: string; emailSent?: boolean; emailError?: string }[]
+  >([]);
 
   const [form, setForm] = useState({
     name_uk: '',
@@ -133,7 +135,7 @@ export function SuperAdminPage() {
         .filter(Boolean);
       const result = await superApi<{
         salon: SalonRow;
-        staff: { email: string; temporaryPassword: string }[];
+        staff: { email: string; temporaryPassword: string; emailSent?: boolean; emailError?: string }[];
       }>('/api/super/salons', {
         method: 'POST',
         body: JSON.stringify({
@@ -146,7 +148,12 @@ export function SuperAdminPage() {
         }),
       });
       setCreatedPasswords(result.staff);
-      setMessage(`Салон «${result.salon.name_uk}» створено. Збережи паролі нижче — другий раз не покажемо.`);
+      const emailed = result.staff.filter((s) => s.emailSent).length;
+      setMessage(
+        emailed
+          ? `Салон «${result.salon.name_uk}» створено. Паролі надіслано на ${emailed} email.`
+          : `Салон «${result.salon.name_uk}» створено. Листи не пішли — скопіюй паролі нижче (перевір RESEND_API_KEY).`
+      );
       setForm({ name_uk: '', address: '', botToken: '', botUsername: '', adminChatId: '', staffEmails: '' });
       await loadSalons();
     } catch (err) {
@@ -172,15 +179,29 @@ export function SuperAdminPage() {
     setSaving(true);
     setError('');
     try {
-      const created = await superApi<StaffRow & { temporaryPassword: string }>(
-        `/api/super/salons/${selectedSalonId}/staff`,
-        { method: 'POST', body: JSON.stringify({ email: newStaffEmail }) }
-      );
-      setCreatedPasswords((prev) => [...prev, { email: created.email, temporaryPassword: created.temporaryPassword }]);
+      const created = await superApi<
+        StaffRow & { temporaryPassword: string; emailSent?: boolean; emailError?: string }
+      >(`/api/super/salons/${selectedSalonId}/staff`, {
+        method: 'POST',
+        body: JSON.stringify({ email: newStaffEmail }),
+      });
+      setCreatedPasswords((prev) => [
+        ...prev,
+        {
+          email: created.email,
+          temporaryPassword: created.temporaryPassword,
+          emailSent: created.emailSent,
+          emailError: created.emailError,
+        },
+      ]);
       setNewStaffEmail('');
       await openStaff(selectedSalonId);
       await loadSalons();
-      setMessage(`Додано ${created.email}. Пароль нижче.`);
+      setMessage(
+        created.emailSent
+          ? `Додано ${created.email}. Пароль надіслано на email.`
+          : `Додано ${created.email}. Лист не пішов — пароль нижче.`
+      );
     } catch (err) {
       setError((err as { error?: string }).error ?? 'Не вдалось додати співробітника');
     } finally {
@@ -191,13 +212,27 @@ export function SuperAdminPage() {
   async function resetPassword(staffId: string) {
     if (!selectedSalonId) return;
     try {
-      const updated = await superApi<StaffRow & { temporaryPassword?: string }>(
-        `/api/super/salons/${selectedSalonId}/staff/${staffId}`,
-        { method: 'PATCH', body: JSON.stringify({ resetPassword: true }) }
-      );
+      const updated = await superApi<
+        StaffRow & { temporaryPassword?: string; emailSent?: boolean; emailError?: string }
+      >(`/api/super/salons/${selectedSalonId}/staff/${staffId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ resetPassword: true }),
+      });
       if (updated.temporaryPassword) {
-        setCreatedPasswords((prev) => [...prev, { email: updated.email, temporaryPassword: updated.temporaryPassword! }]);
-        setMessage(`Новий пароль для ${updated.email} — нижче.`);
+        setCreatedPasswords((prev) => [
+          ...prev,
+          {
+            email: updated.email,
+            temporaryPassword: updated.temporaryPassword!,
+            emailSent: updated.emailSent,
+            emailError: updated.emailError,
+          },
+        ]);
+        setMessage(
+          updated.emailSent
+            ? `Новий пароль для ${updated.email} надіслано на email.`
+            : `Новий пароль для ${updated.email} — нижче (лист не пішов).`
+        );
       }
     } catch (err) {
       setError((err as { error?: string }).error ?? 'Не вдалось скинути пароль');
@@ -234,10 +269,17 @@ export function SuperAdminPage() {
 
         {!!createdPasswords.length && (
           <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 space-y-2">
-            <h2 className="font-semibold">Тимчасові паролі (скопіюй і надішли клініці)</h2>
+            <h2 className="font-semibold">Доступи (email + запасний пароль)</h2>
             {createdPasswords.map((item) => (
-              <div key={`${item.email}-${item.temporaryPassword}`} className="font-mono text-sm">
-                {item.email} → <b>{item.temporaryPassword}</b>
+              <div key={`${item.email}-${item.temporaryPassword}`} className="text-sm space-y-0.5">
+                <div className="font-mono">
+                  {item.email} → <b>{item.temporaryPassword}</b>
+                </div>
+                <div className={item.emailSent ? 'text-green-700' : 'text-amber-800'}>
+                  {item.emailSent
+                    ? 'Лист надіслано'
+                    : `Лист не надіслано${item.emailError ? `: ${item.emailError}` : ''}`}
+                </div>
               </div>
             ))}
           </section>

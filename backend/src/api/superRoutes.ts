@@ -9,6 +9,7 @@ import {
   hashPassword,
   normalizeEmail,
 } from '../utils/password';
+import { sendStaffInviteEmail } from '../utils/email';
 
 const router = Router();
 
@@ -131,7 +132,13 @@ router.post('/salons', async (req: Request, res: Response) => {
     console.error('Failed to start bot for new salon', err);
   }
 
-  const createdStaff: { email: string; temporaryPassword: string; full_name: string | null }[] = [];
+  const createdStaff: {
+    email: string;
+    temporaryPassword: string;
+    full_name: string | null;
+    emailSent: boolean;
+    emailError?: string;
+  }[] = [];
   const emails = Array.isArray(staffEmails) ? staffEmails : [];
   for (const raw of emails) {
     const email = normalizeEmail(String(raw ?? ''));
@@ -146,7 +153,18 @@ router.post('/salons', async (req: Request, res: Response) => {
       is_active: true,
     });
     if (!staffError) {
-      createdStaff.push({ email, temporaryPassword, full_name: null });
+      const mail = await sendStaffInviteEmail({
+        to: email,
+        salonName: salon.name_uk,
+        temporaryPassword,
+      });
+      createdStaff.push({
+        email,
+        temporaryPassword,
+        full_name: null,
+        emailSent: mail.sent,
+        emailError: mail.error,
+      });
     }
   }
 
@@ -176,7 +194,7 @@ router.post('/salons/:id/staff', async (req: Request, res: Response) => {
 
   const { data: salon } = await supabase
     .from('salons')
-    .select('id')
+    .select('id, name_uk')
     .eq('id', req.params.id)
     .maybeSingle();
   if (!salon) {
@@ -203,7 +221,17 @@ router.post('/salons/:id/staff', async (req: Request, res: Response) => {
     return;
   }
 
-  res.status(201).json({ ...data, temporaryPassword });
+  const mail = await sendStaffInviteEmail({
+    to: email,
+    salonName: salon.name_uk,
+    temporaryPassword,
+  });
+  res.status(201).json({
+    ...data,
+    temporaryPassword,
+    emailSent: mail.sent,
+    emailError: mail.error,
+  });
 });
 
 router.patch('/salons/:id/staff/:staffId', async (req: Request, res: Response) => {
@@ -213,18 +241,31 @@ router.patch('/salons/:id/staff/:staffId', async (req: Request, res: Response) =
   if (req.body?.resetPassword === true) {
     const temporaryPassword = generateTempPassword();
     patch.password_hash = hashPassword(temporaryPassword);
-    const { data, error } = await supabase
-      .from('salon_staff')
-      .update(patch)
-      .eq('id', req.params.staffId)
-      .eq('salon_id', req.params.id)
-      .select('id, email, full_name, role, is_active, created_at')
-      .single();
+    const [{ data, error }, salonRes] = await Promise.all([
+      supabase
+        .from('salon_staff')
+        .update(patch)
+        .eq('id', req.params.staffId)
+        .eq('salon_id', req.params.id)
+        .select('id, email, full_name, role, is_active, created_at')
+        .single(),
+      supabase.from('salons').select('name_uk').eq('id', req.params.id).maybeSingle(),
+    ]);
     if (error) {
       res.status(500).json({ error: error.message });
       return;
     }
-    res.json({ ...data, temporaryPassword });
+    const mail = await sendStaffInviteEmail({
+      to: data.email,
+      salonName: salonRes.data?.name_uk ?? 'SalonBot',
+      temporaryPassword,
+    });
+    res.json({
+      ...data,
+      temporaryPassword,
+      emailSent: mail.sent,
+      emailError: mail.error,
+    });
     return;
   }
 
