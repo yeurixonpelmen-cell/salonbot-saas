@@ -37,9 +37,11 @@ export function SchedulePage() {
   const [attentionOnly, setAttentionOnly] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [roomModalOpen, setRoomModalOpen] = useState(false);
+  const [newRoomName, setNewRoomName] = useState('');
+  const [savingRoom, setSavingRoom] = useState(false);
 
   const activeRooms = useMemo(() => rooms.filter((room) => room.is_active), [rooms]);
-  const showRoomToggle = activeRooms.length > 0;
   const mobileColumns = viewMode === 'room' ? activeRooms : masters;
   const mobileLabel =
     viewMode === 'room'
@@ -78,9 +80,32 @@ export function SchedulePage() {
     setMobileColumnIndex(0);
   }, [viewMode]);
 
-  useEffect(() => {
-    if (!showRoomToggle && viewMode === 'room') setViewMode('master');
-  }, [showRoomToggle, viewMode]);
+  async function reloadRooms() {
+    try {
+      setRooms(await api.get<Room[]>('/api/admin/rooms'));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function createRoom(event: FormEvent) {
+    event.preventDefault();
+    const name = newRoomName.trim();
+    if (!name) return;
+    setSavingRoom(true);
+    setError('');
+    try {
+      await api.post<Room>('/api/admin/rooms', { name, sort_order: activeRooms.length, is_active: true });
+      setNewRoomName('');
+      setRoomModalOpen(false);
+      await reloadRooms();
+      setViewMode('room');
+    } catch (err) {
+      setError((err as { error?: string }).error ?? 'Не вдалося створити кабінет');
+    } finally {
+      setSavingRoom(false);
+    }
+  }
 
   useEffect(() => {
     const token = getToken();
@@ -194,23 +219,26 @@ export function SchedulePage() {
           <Button variant="ghost" onClick={() => setDate(todayInTimeZone(timeZone))}>Сьогодні</Button>
         </div>
         <div className="schedule-filters">
-          {showRoomToggle && (
-            <div className="view-toggle" role="group" aria-label="Вид розкладу">
-              <button
-                type="button"
-                className={viewMode === 'master' ? 'active' : ''}
-                onClick={() => setViewMode('master')}
-              >
-                Лікарі
-              </button>
-              <button
-                type="button"
-                className={viewMode === 'room' ? 'active' : ''}
-                onClick={() => setViewMode('room')}
-              >
-                Кабінети
-              </button>
-            </div>
+          <div className="view-toggle" role="group" aria-label="Вид розкладу">
+            <button
+              type="button"
+              className={viewMode === 'master' ? 'active' : ''}
+              onClick={() => setViewMode('master')}
+            >
+              Лікарі
+            </button>
+            <button
+              type="button"
+              className={viewMode === 'room' ? 'active' : ''}
+              onClick={() => setViewMode('room')}
+            >
+              Кабінети
+            </button>
+          </div>
+          {viewMode === 'room' && (
+            <Button type="button" variant="secondary" onClick={() => setRoomModalOpen(true)}>
+              + Кабінет
+            </Button>
           )}
           <select className="ui-input" value={visitFilter} onChange={(event) => setVisitFilter(event.target.value as VisitStatus | 'all')}>
             <option value="all">Усі стани візиту</option>
@@ -222,6 +250,15 @@ export function SchedulePage() {
           </label>
         </div>
       </section>
+
+      {viewMode === 'room' && !activeRooms.length && !loading && (
+        <div className="notice">
+          Кабінетів ще немає.{' '}
+          <button type="button" className="linkish" onClick={() => setRoomModalOpen(true)}>
+            Додати перший кабінет
+          </button>
+        </div>
+      )}
 
       <div className="status-legend">
         <span><i className="legend-dot refused" /> Відмова</span>
@@ -288,6 +325,25 @@ export function SchedulePage() {
             void refetch().catch((err: { error?: string }) => setError(err.error ?? 'Не вдалося оновити записи'));
           }}
         />
+      )}
+      {roomModalOpen && (
+        <Modal title="Новий кабінет" onClose={() => setRoomModalOpen(false)}>
+          <form className="form-grid" onSubmit={createRoom}>
+            <label className="full">
+              Назва
+              <input
+                required
+                autoFocus
+                value={newRoomName}
+                onChange={(e) => setNewRoomName(e.target.value)}
+                placeholder="Кабінет 1"
+              />
+            </label>
+            <Button className="full" type="submit" disabled={savingRoom}>
+              {savingRoom ? 'Створення…' : 'Створити кабінет'}
+            </Button>
+          </form>
+        </Modal>
       )}
     </div>
   );
