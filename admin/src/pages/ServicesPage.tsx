@@ -1,5 +1,6 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { api, Master, Service, ServicePayload } from '../api';
+import { Button } from '../components/ui';
 
 type ServiceDraft = Partial<ServicePayload> & { id?: string };
 
@@ -38,14 +39,14 @@ export function ServicesPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="page-stack">
+      <header className="page-header">
         <div>
-          <h1 className="text-2xl font-bold">Послуги</h1>
-          <p className="text-sm text-gray-500">Прайс, тривалість і прив'язка до майстрів</p>
+          <span className="eyebrow">Прайс</span>
+          <h1>Послуги</h1>
+          <p>Тривалість, ціна і прив’язка до спеціалістів</p>
         </div>
-        <button
-          className="px-4 py-2 rounded-lg bg-blue-600 text-white"
+        <Button
           onClick={() =>
             setDraft({
               name_uk: '',
@@ -58,13 +59,13 @@ export function ServicesPage() {
           }
         >
           + Додати
-        </button>
-      </div>
+        </Button>
+      </header>
 
-      {error && <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-red-800">{error}</div>}
-      {loading && <div className="rounded-xl bg-white border p-3 text-gray-500">Завантаження...</div>}
+      {error && <div className="notice-error">{error}</div>}
+      {loading && <div className="notice">Завантаження…</div>}
 
-      <div className="bg-white border rounded-2xl divide-y">
+      <div className="clients-list">
         {services.map((service) => (
           <div key={service.id} className="p-4 flex flex-col md:flex-row md:items-center gap-3">
             <div className="flex-1">
@@ -206,9 +207,9 @@ function ServiceForm({
           />
           Активна
         </label>
-        <button type="submit" disabled={saving} className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium">
+        <Button type="submit" disabled={saving} className="w-full">
           {saving ? 'Збереження...' : 'Зберегти'}
-        </button>
+        </Button>
       </form>
     </Modal>
   );

@@ -1,5 +1,6 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { api, Master, MasterPayload, MasterPortfolioItem, ScheduleRow } from '../api';
+import { Button } from '../components/ui';
 
 const DAYS = [
   { id: 1, label: 'Пн' },
@@ -54,27 +55,28 @@ export function MastersPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="page-stack">
+      <header className="page-header">
         <div>
-          <h1 className="text-2xl font-bold">Майстри</h1>
-          <p className="text-sm text-gray-500">Команда салону, графік і портфоліо (за бажанням)</p>
+          <span className="eyebrow">Команда</span>
+          <h1>Спеціалісти</h1>
+          <p>Графік, посада і портфоліо</p>
         </div>
-        <button className="px-4 py-2 rounded-lg bg-blue-600 text-white" onClick={() => setDraft(emptyDraft())}>
-          + Додати
-        </button>
-      </div>
+        <Button onClick={() => setDraft(emptyDraft())}>+ Додати</Button>
+      </header>
 
-      {error && <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-red-800">{error}</div>}
-      {loading && <div className="rounded-xl bg-white border p-3 text-gray-500">Завантаження...</div>}
+      {error && <div className="notice-error">{error}</div>}
+      {loading && <div className="notice">Завантаження…</div>}
 
       <div className="grid gap-3">
         {masters.map((master) => (
-          <div key={master.id} className="bg-white border rounded-2xl p-4 flex gap-4 items-center">
+          <div key={master.id} className="content-card flex gap-4 items-center">
             {master.photo_url ? (
               <img src={master.photo_url} alt="" className="w-16 h-16 rounded-xl object-cover" />
             ) : (
-              <div className="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center text-2xl">👤</div>
+              <div className="large-initials" style={{ width: 64, height: 64, flex: '0 0 64px', fontSize: 18 }}>
+                {(master.name || '?').slice(0, 1).toUpperCase()}
+              </div>
             )}
             <div className="flex-1">
               <div className="font-semibold">{master.name}</div>
@@ -277,9 +279,9 @@ function MasterForm({
           />
           Активний
         </label>
-        <button type="submit" disabled={saving} className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium">
+        <Button type="submit" disabled={saving} className="w-full">
           {saving ? 'Збереження...' : 'Зберегти'}
-        </button>
+        </Button>
       </form>
     </Modal>
   );
@@ -358,9 +360,9 @@ function ScheduleEditor({ master, onClose }: { master: Master; onClose: () => vo
             />
           </div>
         ))}
-        <button type="submit" disabled={saving} className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium">
+        <Button type="submit" disabled={saving} className="w-full">
           {saving ? 'Збереження...' : 'Зберегти розклад'}
-        </button>
+        </Button>
       </form>
     </Modal>
   );

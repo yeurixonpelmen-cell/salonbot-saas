@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { Button, Input } from '../components/ui';
 
 const BOT_USERNAME = import.meta.env.VITE_LOGIN_BOT_USERNAME ?? 'salonbot_login_bot';
 
@@ -62,67 +63,49 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-      <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 text-center max-w-sm w-full space-y-4">
-        <div>
-          <h1 className="text-2xl font-bold mb-2">SalonBot Admin</h1>
-          <p className="text-gray-600">Вхід у кабінет салону</p>
+    <div className="login-shell">
+      <div className="login-card">
+        <div className="brand">
+          <span className="brand-mark">SB</span>
+          <div style={{ textAlign: 'left' }}>
+            SalonBot
+            <small>Кабінет салону</small>
+          </div>
         </div>
+        <p className="login-sub">Увійдіть, щоб відкрити розклад і клієнтів</p>
 
-        <div className="flex rounded-lg border overflow-hidden">
-          <button
-            type="button"
-            className={`flex-1 py-2 text-sm ${mode === 'email' ? 'bg-blue-600 text-white' : 'bg-white'}`}
-            onClick={() => setMode('email')}
-          >
+        <div className="login-tabs">
+          <button type="button" className={mode === 'email' ? 'active' : ''} onClick={() => setMode('email')}>
             Email
           </button>
-          <button
-            type="button"
-            className={`flex-1 py-2 text-sm ${mode === 'telegram' ? 'bg-blue-600 text-white' : 'bg-white'}`}
-            onClick={() => setMode('telegram')}
-          >
+          <button type="button" className={mode === 'telegram' ? 'active' : ''} onClick={() => setMode('telegram')}>
             Telegram
           </button>
         </div>
 
-        {error && <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-red-800 text-sm text-left">{error}</div>}
+        {error && <div className="notice-error" style={{ textAlign: 'left', marginBottom: 12 }}>{error}</div>}
 
         {mode === 'email' ? (
-          <form onSubmit={submitEmail} className="space-y-3 text-left">
-            <label className="block">
-              <span className="text-sm text-gray-600">Email</span>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full border rounded-lg p-3 mt-1"
-              />
+          <form onSubmit={submitEmail} className="form-grid" style={{ gridTemplateColumns: '1fr', textAlign: 'left' }}>
+            <label className="full">
+              Email
+              <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
             </label>
-            <label className="block">
-              <span className="text-sm text-gray-600">Пароль</span>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full border rounded-lg p-3 mt-1"
-              />
+            <label className="full">
+              Пароль
+              <Input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
             </label>
-            <button type="submit" disabled={loading} className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium">
+            <Button type="submit" className="full" disabled={loading}>
               {loading ? 'Вхід…' : 'Увійти'}
-            </button>
+            </Button>
           </form>
         ) : (
           <div ref={containerRef} className="flex justify-center" />
         )}
 
-        <p className="text-sm text-gray-500">
+        <p className="login-sub" style={{ marginTop: 18, marginBottom: 0 }}>
           Новий салон через Telegram?{' '}
-          <Link to="/onboarding" className="text-blue-600 hover:underline">
-            Підключитись
-          </Link>
+          <Link to="/onboarding" className="text-link">Підключитись</Link>
         </p>
       </div>
     </div>

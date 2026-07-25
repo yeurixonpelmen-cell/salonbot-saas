@@ -83,7 +83,7 @@ export function Modal({
       >
         <header className="ui-panel-header">
           <h2>{title}</h2>
-          <button type="button" onClick={onClose} aria-label="Закрити">×</button>
+          <button type="button" className="ui-close" onClick={onClose} aria-label="Закрити">×</button>
         </header>
         <div className="ui-panel-body">{children}</div>
       </section>
@@ -111,7 +111,7 @@ export function Drawer({
       >
         <header className="ui-panel-header">
           <h2>{title}</h2>
-          <button type="button" onClick={onClose} aria-label="Закрити">×</button>
+          <button type="button" className="ui-close" onClick={onClose} aria-label="Закрити">×</button>
         </header>
         <div className="ui-panel-body">{children}</div>
       </aside>

@@ -1,5 +1,6 @@
 import { ChangeEvent, FormEvent, useEffect, useState } from 'react';
 import { api, SalonSettings } from '../api';
+import { Button } from '../components/ui';
 import { AdminTheme, applyAdminTheme, getAdminTheme } from '../utils/theme';
 
 export function SettingsPage() {
@@ -147,12 +148,15 @@ export function SettingsPage() {
             <p className="text-sm text-gray-500 mt-1 settings-muted">Увімкніть те, що потрібно саме вашому салону</p>
           </div>
 
-          <div className="rounded-xl bg-blue-50 border border-blue-100 p-3 text-sm text-blue-900">
+          <div
+            className="rounded-xl border p-3 text-sm"
+            style={{ background: 'var(--accent-soft)', borderColor: 'var(--line)', color: 'var(--accent-ink)' }}
+          >
             <b>Посилання для Instagram / Viber (без Telegram):</b>
             <div className="mt-2 break-all font-mono text-xs">
               {`https://salonbot-mini-app-production.up.railway.app/?salon=${settings.id}`}
             </div>
-            <p className="mt-2 text-blue-800/80">Кидайте це посилання клієнтам — відкриється той самий запис у браузері.</p>
+            <p className="mt-2 opacity-80">Кидайте це посилання клієнтам — відкриється той самий запис у браузері.</p>
           </div>
 
           <label className="flex items-start gap-3 rounded-xl border p-3 cursor-pointer hover:bg-gray-50">
@@ -213,9 +217,9 @@ export function SettingsPage() {
           </span>
         </label>
 
-        <button type="submit" disabled={saving} className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium">
-          {saving ? 'Збереження...' : 'Зберегти налаштування'}
-        </button>
+        <Button type="submit" disabled={saving} className="w-full">
+          {saving ? 'Збереження…' : 'Зберегти налаштування'}
+        </Button>
       </form>
     </div>
   );
