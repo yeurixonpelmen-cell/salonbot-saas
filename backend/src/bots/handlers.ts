@@ -72,10 +72,11 @@ export function setupBotHandlers(bot: Bot, salonId: string): void {
     const data = ctx.callbackQuery.data;
     if (!data) return;
 
-    if (data.startsWith('cancel_')) {
-      const bookingId = data.replace('cancel_', '');
-      const isOwner = await ensureCustomerCallback(ctx.from?.id, bookingId, salonId);
-      if (!isOwner) {
+    // admin_cancel_ before cancel_ (cancel_ is a prefix of neither, but keep order explicit)
+    if (data.startsWith('admin_cancel_')) {
+      const bookingId = data.slice('admin_cancel_'.length);
+      const isAllowed = await ensureAdminCallback(ctx.chat?.id, salonId);
+      if (!isAllowed) {
         await ctx.answerCallbackQuery({ text: 'Недостатньо прав', show_alert: true });
         return;
       }
@@ -86,12 +87,12 @@ export function setupBotHandlers(bot: Bot, salonId: string): void {
         return;
       }
       await ctx.answerCallbackQuery({ text: 'Запис скасовано' });
-      await safeEditMessage(ctx, '❌ Запис скасовано.');
+      await safeEditMessage(ctx, '❌ Запис скасовано адміністратором.');
       return;
     }
 
     if (data.startsWith('confirm_')) {
-      const bookingId = data.replace('confirm_', '');
+      const bookingId = data.slice('confirm_'.length);
       const isAllowed = await ensureAdminCallback(ctx.chat?.id, salonId);
       if (!isAllowed) {
         await ctx.answerCallbackQuery({ text: 'Недостатньо прав', show_alert: true });
@@ -108,10 +109,10 @@ export function setupBotHandlers(bot: Bot, salonId: string): void {
       return;
     }
 
-    if (data.startsWith('admin_cancel_')) {
-      const bookingId = data.replace('admin_cancel_', '');
-      const isAllowed = await ensureAdminCallback(ctx.chat?.id, salonId);
-      if (!isAllowed) {
+    if (data.startsWith('cancel_')) {
+      const bookingId = data.slice('cancel_'.length);
+      const isOwner = await ensureCustomerCallback(ctx.from?.id, bookingId, salonId);
+      if (!isOwner) {
         await ctx.answerCallbackQuery({ text: 'Недостатньо прав', show_alert: true });
         return;
       }
@@ -122,8 +123,11 @@ export function setupBotHandlers(bot: Bot, salonId: string): void {
         return;
       }
       await ctx.answerCallbackQuery({ text: 'Запис скасовано' });
-      await safeEditMessage(ctx, '❌ Запис скасовано адміністратором.');
+      await safeEditMessage(ctx, '❌ Запис скасовано.');
+      return;
     }
+
+    await ctx.answerCallbackQuery();
   });
 }
 

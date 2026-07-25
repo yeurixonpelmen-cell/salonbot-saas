@@ -25,7 +25,7 @@ export async function sendBookingNotifications(
     try {
       await bot.api.sendMessage(
         clientTelegramId,
-        `✅ Запис підтверджено!\n📅 ${formatted}\n✂️ ${serviceName}\n👤 Майстер: ${masterName}\n📍 ${salonAddress}`,
+        `✅ Запис прийнято!\n📅 ${formatted}\n✂️ ${serviceName}\n👤 Майстер: ${masterName}\n📍 ${salonAddress}\n\nОчікує підтвердження салону.`,
         {
           reply_markup: {
             inline_keyboard: [[{ text: '❌ Скасувати запис', callback_data: `cancel_${bookingId}` }]],
@@ -46,18 +46,22 @@ export async function sendBookingNotifications(
   if (!salon?.admin_chat_id) return;
 
   const source = clientTelegramId ? 'Telegram' : 'Сайт / Viber / Instagram';
-  await bot.api.sendMessage(
-    salon.admin_chat_id,
-    `📅 НОВИЙ ЗАПИС (${source})\n👤 ${clientName} | 📞 ${clientPhone ?? '—'}\n✂️ ${serviceName} — ${masterName}\n🕐 ${formatted}`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: '✅ Підтвердити', callback_data: `confirm_${bookingId}` },
-            { text: '❌ Скасувати', callback_data: `admin_cancel_${bookingId}` },
+  try {
+    await bot.api.sendMessage(
+      salon.admin_chat_id,
+      `📅 НОВИЙ ЗАПИС (${source})\n👤 ${clientName} | 📞 ${clientPhone ?? '—'}\n✂️ ${serviceName} — ${masterName}\n🕐 ${formatted}`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '✅ Підтвердити', callback_data: `confirm_${bookingId}` },
+              { text: '❌ Скасувати', callback_data: `admin_cancel_${bookingId}` },
+            ],
           ],
-        ],
-      },
-    }
-  );
+        },
+      }
+    );
+  } catch (err) {
+    console.error(`Admin booking notification failed for ${bookingId}:`, err);
+  }
 }
