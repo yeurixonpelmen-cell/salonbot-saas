@@ -36,7 +36,7 @@ export function applyAdminTheme(theme: AdminTheme): void {
     themeColor.setAttribute('name', 'theme-color');
     document.head.appendChild(themeColor);
   }
-  themeColor.setAttribute('content', theme === 'dark' ? '#1e2026' : '#eef5f3');
+  themeColor.setAttribute('content', theme === 'dark' ? '#0f1614' : '#eef5f3');
 }
 
 export function initAdminTheme(): AdminTheme {
