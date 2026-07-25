@@ -154,18 +154,21 @@ export function ClientsPage() {
         <div>
           <span className="eyebrow">CRM</span>
           <h1>Клієнти</h1>
-          <p>Пошук без урахування регістру, нові/старі за період, фільтри по даних картки</p>
         </div>
         <Button onClick={() => setShowCreate(true)}>+ Додати клієнта</Button>
       </header>
 
       <section className="content-card client-toolbar">
         <div className="client-search">
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Пошук: ім’я, телефон, email, тег, нотатки (регістр не важливий)"
-          />
+          <label className="client-search-field">
+            <span className="client-search-icon" aria-hidden>⌕</span>
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Пошук"
+              aria-label="Пошук"
+            />
+          </label>
           <Button
             type="button"
             variant="secondary"
@@ -173,128 +176,130 @@ export function ClientsPage() {
           >
             Фільтри{activeFilterCount ? ` (${activeFilterCount})` : ''}
           </Button>
-          <span>{summary?.total ?? clients.length} у списку</span>
-        </div>
-
-        <div className="client-period-bar">
-          <div className="client-period-presets">
-            {(
-              [
-                ['7d', '7 днів'],
-                ['30d', '30 днів'],
-                ['month', 'Цей місяць'],
-                ['custom', 'Свій'],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                className={`chip-btn${periodPreset === value ? ' active' : ''}`}
-                onClick={() => setPeriodPreset(value)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          {periodPreset === 'custom' && (
-            <div className="client-period-custom">
-              <label>
-                Від
-                <Input type="date" value={customFrom || range.from} onChange={(e) => setCustomFrom(e.target.value)} />
-              </label>
-              <label>
-                До
-                <Input type="date" value={customTo || range.to} onChange={(e) => setCustomTo(e.target.value)} />
-              </label>
-            </div>
-          )}
-          <div className="client-period-stats">
-            <strong>{summary?.new_in_period ?? 0}</strong>
-            <span>нових за період</span>
-            <button type="button" className="text-link" onClick={() => setSegment('new')}>
-              Показати нових
-            </button>
-            <button type="button" className="text-link" onClick={() => setSegment('old')}>
-              Показати старих
-            </button>
-            {segment !== 'all' && (
-              <button type="button" className="text-link" onClick={() => setSegment('all')}>
-                Усі
-              </button>
-            )}
-          </div>
+          <span>{summary?.total ?? clients.length}</span>
         </div>
 
         {showFilters && (
-          <div className="client-filters-panel">
-            <label>
-              Нові / старі
-              <select value={segment} onChange={(e) => setSegment(e.target.value as Segment)}>
-                <option value="all">Усі клієнти</option>
-                <option value="new">Нові (створені в періоді)</option>
-                <option value="old">Старі (до періоду)</option>
-              </select>
-            </label>
-            <label>
-              Візити
-              <select value={visits} onChange={(e) => setVisits(e.target.value as VisitsFilter)}>
-                <option value="all">Будь-які</option>
-                <option value="none">Без візитів</option>
-                <option value="some">Є візити (1+)</option>
-                <option value="many">Багато (5+)</option>
-              </select>
-            </label>
-            <label>
-              Тег
-              <select value={tag} onChange={(e) => setTag(e.target.value)}>
-                <option value="">Усі теги</option>
-                {availableTags.map((item) => (
-                  <option key={item} value={item}>{item}</option>
+          <div className="client-filters-wrap">
+            <div className="client-period-bar">
+              <div className="client-period-presets">
+                {(
+                  [
+                    ['7d', '7 днів'],
+                    ['30d', '30 днів'],
+                    ['month', 'Цей місяць'],
+                    ['custom', 'Свій'],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`chip-btn${periodPreset === value ? ' active' : ''}`}
+                    onClick={() => setPeriodPreset(value)}
+                  >
+                    {label}
+                  </button>
                 ))}
-              </select>
-            </label>
-            <label>
-              Телефон
-              <select value={hasPhone} onChange={(e) => setHasPhone(e.target.value as TriState)}>
-                <option value="any">Не важливо</option>
-                <option value="yes">Є</option>
-                <option value="no">Немає</option>
-              </select>
-            </label>
-            <label>
-              Email
-              <select value={hasEmail} onChange={(e) => setHasEmail(e.target.value as TriState)}>
-                <option value="any">Не важливо</option>
-                <option value="yes">Є</option>
-                <option value="no">Немає</option>
-              </select>
-            </label>
-            <label>
-              Telegram
-              <select value={hasTelegram} onChange={(e) => setHasTelegram(e.target.value as TriState)}>
-                <option value="any">Не важливо</option>
-                <option value="yes">Є</option>
-                <option value="no">Немає</option>
-              </select>
-            </label>
-            <label>
-              Нотатки
-              <select value={hasNotes} onChange={(e) => setHasNotes(e.target.value as TriState)}>
-                <option value="any">Не важливо</option>
-                <option value="yes">Є</option>
-                <option value="no">Немає</option>
-              </select>
-            </label>
-            <label>
-              Дата народження
-              <select value={hasDob} onChange={(e) => setHasDob(e.target.value as TriState)}>
-                <option value="any">Не важливо</option>
-                <option value="yes">Є</option>
-                <option value="no">Немає</option>
-              </select>
-            </label>
-            <div className="client-filters-actions">
-              <Button type="button" variant="ghost" onClick={resetFilters}>Скинути</Button>
+              </div>
+              {periodPreset === 'custom' && (
+                <div className="client-period-custom">
+                  <label>
+                    Від
+                    <Input type="date" value={customFrom || range.from} onChange={(e) => setCustomFrom(e.target.value)} />
+                  </label>
+                  <label>
+                    До
+                    <Input type="date" value={customTo || range.to} onChange={(e) => setCustomTo(e.target.value)} />
+                  </label>
+                </div>
+              )}
+              <div className="client-period-stats">
+                <strong>{summary?.new_in_period ?? 0}</strong>
+                <span>нових за період</span>
+                <button type="button" className="text-link" onClick={() => setSegment('new')}>
+                  Показати нових
+                </button>
+                <button type="button" className="text-link" onClick={() => setSegment('old')}>
+                  Показати старих
+                </button>
+                {segment !== 'all' && (
+                  <button type="button" className="text-link" onClick={() => setSegment('all')}>
+                    Усі
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="client-filters-panel">
+              <label>
+                Нові / старі
+                <select value={segment} onChange={(e) => setSegment(e.target.value as Segment)}>
+                  <option value="all">Усі клієнти</option>
+                  <option value="new">Нові (створені в періоді)</option>
+                  <option value="old">Старі (до періоду)</option>
+                </select>
+              </label>
+              <label>
+                Візити
+                <select value={visits} onChange={(e) => setVisits(e.target.value as VisitsFilter)}>
+                  <option value="all">Будь-які</option>
+                  <option value="none">Без візитів</option>
+                  <option value="some">Є візити (1+)</option>
+                  <option value="many">Багато (5+)</option>
+                </select>
+              </label>
+              <label>
+                Тег
+                <select value={tag} onChange={(e) => setTag(e.target.value)}>
+                  <option value="">Усі теги</option>
+                  {availableTags.map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Телефон
+                <select value={hasPhone} onChange={(e) => setHasPhone(e.target.value as TriState)}>
+                  <option value="any">Не важливо</option>
+                  <option value="yes">Є</option>
+                  <option value="no">Немає</option>
+                </select>
+              </label>
+              <label>
+                Email
+                <select value={hasEmail} onChange={(e) => setHasEmail(e.target.value as TriState)}>
+                  <option value="any">Не важливо</option>
+                  <option value="yes">Є</option>
+                  <option value="no">Немає</option>
+                </select>
+              </label>
+              <label>
+                Telegram
+                <select value={hasTelegram} onChange={(e) => setHasTelegram(e.target.value as TriState)}>
+                  <option value="any">Не важливо</option>
+                  <option value="yes">Є</option>
+                  <option value="no">Немає</option>
+                </select>
+              </label>
+              <label>
+                Нотатки
+                <select value={hasNotes} onChange={(e) => setHasNotes(e.target.value as TriState)}>
+                  <option value="any">Не важливо</option>
+                  <option value="yes">Є</option>
+                  <option value="no">Немає</option>
+                </select>
+              </label>
+              <label>
+                Дата народження
+                <select value={hasDob} onChange={(e) => setHasDob(e.target.value as TriState)}>
+                  <option value="any">Не важливо</option>
+                  <option value="yes">Є</option>
+                  <option value="no">Немає</option>
+                </select>
+              </label>
+              <div className="client-filters-actions">
+                <Button type="button" variant="ghost" onClick={resetFilters}>Скинути</Button>
+              </div>
             </div>
           </div>
         )}
