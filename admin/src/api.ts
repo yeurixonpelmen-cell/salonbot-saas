@@ -66,6 +66,8 @@ export interface Booking {
   service_id: string;
   service_name: string;
   service_price: number | null;
+  room_id?: string | null;
+  room_name?: string | null;
   duration_minutes: number;
   datetime: string;
   status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
@@ -75,6 +77,21 @@ export interface Booking {
   attention_reason: string | null;
   has_conflict: boolean;
   files_count: number;
+}
+
+export interface Room {
+  id: string;
+  salon_id?: string;
+  name: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface RoomPayload {
+  name: string;
+  sort_order?: number;
+  is_active?: boolean;
 }
 
 export type BookingStatus = Booking['status'];
@@ -166,6 +183,7 @@ export interface CreateBookingPayload {
   clientPhone?: string;
   datetime: string;
   notes?: string;
+  roomId?: string | null;
 }
 
 export interface UpdateBookingPayload {
@@ -178,6 +196,7 @@ export interface UpdateBookingPayload {
   serviceId?: string;
   datetime?: string;
   clientId?: string;
+  roomId?: string | null;
 }
 
 export interface ServicePayload {

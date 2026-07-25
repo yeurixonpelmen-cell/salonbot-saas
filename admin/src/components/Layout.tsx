@@ -5,6 +5,7 @@ const nav = [
   { to: '/', label: 'Розклад', icon: '▦', end: true },
   { to: '/clients', label: 'Клієнти', icon: '◎' },
   { to: '/masters', label: 'Спеціалісти', icon: '♙' },
+  { to: '/rooms', label: 'Кабінети', icon: '▢' },
   { to: '/services', label: 'Послуги', icon: '◇' },
   { to: '/settings', label: 'Налаштування', icon: '⚙' },
 ];

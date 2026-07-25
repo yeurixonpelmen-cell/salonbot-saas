@@ -42,9 +42,37 @@ h1 { margin: 2px 0 3px; font-size: 28px; line-height: 1.2; letter-spacing: -.03e
 .content-card { padding: 20px; border: 1px solid #e1e5ec; border-radius: 13px; background: #fff; box-shadow: 0 2px 5px #17203306; }
 
 .schedule-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px; background: #fff; border: 1px solid #e2e6ed; border-radius: 12px; }
-.date-controls, .schedule-filters { display: flex; align-items: center; gap: 8px; }
+.date-controls, .schedule-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .date-controls .ui-input { width: 148px; }
 .schedule-filters .ui-input { width: 190px; }
+.view-toggle {
+  display: inline-flex;
+  border: 1px solid #d5dbe6;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f4f6f9;
+}
+.view-toggle button {
+  border: 0;
+  background: transparent;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #4b5563;
+}
+.view-toggle button.active {
+  background: #2563eb;
+  color: #fff;
+}
+html[data-theme='dark'] .view-toggle {
+  border-color: #3a3f4b;
+  background: #1f2430;
+}
+html[data-theme='dark'] .view-toggle button { color: #cbd5e1; }
+html[data-theme='dark'] .view-toggle button.active {
+  background: #3b82f6;
+  color: #fff;
+}
 .check-filter { display: flex; gap: 7px; align-items: center; padding: 0 8px; color: #4f596d; font-size: 12px; white-space: nowrap; }
 .check-filter input { accent-color: #3569dc; }
 .status-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 0 3px; color: #687288; font-size: 11px; }

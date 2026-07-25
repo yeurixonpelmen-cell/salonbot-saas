@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Booking,
   Master,
+  Room,
   GRID_SLOT_MINUTES,
   GRID_START_HOUR,
   getGridTimeSlots,
@@ -15,14 +16,24 @@ import {
   zonedTimeHm,
 } from '../utils/datetime';
 
+export type ScheduleViewMode = 'master' | 'room';
+
+export type ScheduleAddDraft = {
+  masterId: string;
+  roomId?: string | null;
+  time: string;
+};
+
 interface Props {
   bookings: Booking[];
   masters: Master[];
+  rooms?: Room[];
+  viewMode?: ScheduleViewMode;
   date: string;
   timeZone?: string;
-  mobileMasterIndex?: number;
+  mobileColumnIndex?: number;
   onBookingClick: (b: Booking) => void;
-  onAddClick: (masterId: string, time: string) => void;
+  onAddClick: (draft: ScheduleAddDraft) => void;
   onNoteSave: (booking: Booking, notes: string) => Promise<void>;
 }
 
@@ -35,9 +46,11 @@ function initials(booking: Booking) {
 export function ScheduleGrid({
   bookings,
   masters,
+  rooms = [],
+  viewMode = 'master',
   date,
   timeZone = DEFAULT_SALON_TIMEZONE,
-  mobileMasterIndex = 0,
+  mobileColumnIndex = 0,
   onBookingClick,
   onAddClick,
   onNoteSave,
@@ -55,19 +68,49 @@ export function ScheduleGrid({
     return () => media.removeEventListener('change', update);
   }, []);
 
-  const displayMasters = isMobile ? [masters[mobileMasterIndex]].filter(Boolean) : masters;
+  const activeRooms = useMemo(() => rooms.filter((room) => room.is_active), [rooms]);
   const dayBookings = useMemo(
     () => bookings.filter((b) => zonedDateKey(b.datetime, timeZone) === date),
     [bookings, date, timeZone]
   );
   const timelineHeight = timeSlots.length * SLOT_HEIGHT;
 
-  function position(booking: Booking, masterBookings: Booking[]) {
+  const columns = useMemo(() => {
+    if (viewMode === 'room') {
+      return activeRooms.map((room) => ({
+        id: room.id,
+        title: room.name,
+        subtitle: 'Кабінет',
+        photoUrl: null as string | null,
+        filter: (booking: Booking) => booking.room_id === room.id,
+        onAdd: (time: string) =>
+          onAddClick({
+            masterId: masters.find((m) => m.is_active)?.id ?? masters[0]?.id ?? '',
+            roomId: room.id,
+            time,
+          }),
+        showDoctor: true,
+      }));
+    }
+    return masters.map((master) => ({
+      id: master.id,
+      title: master.name,
+      subtitle: master.position || 'Спеціаліст',
+      photoUrl: master.photo_url,
+      filter: (booking: Booking) => booking.master_id === master.id,
+      onAdd: (time: string) => onAddClick({ masterId: master.id, time }),
+      showDoctor: false,
+    }));
+  }, [viewMode, activeRooms, masters, onAddClick]);
+
+  const displayColumns = isMobile ? [columns[mobileColumnIndex]].filter(Boolean) : columns;
+
+  function position(booking: Booking, columnBookings: Booking[]) {
     const startMinute = minutesSinceMidnight(booking.datetime, timeZone);
     const dayStart = GRID_START_HOUR * 60;
     const top = Math.max(0, ((startMinute - dayStart) / GRID_SLOT_MINUTES) * SLOT_HEIGHT);
     const endMinute = startMinute + booking.duration_minutes;
-    const overlaps = masterBookings
+    const overlaps = columnBookings
       .filter((item) => {
         const itemStart = minutesSinceMidnight(item.datetime, timeZone);
         return itemStart < endMinute && itemStart + item.duration_minutes > startMinute;
@@ -84,29 +127,29 @@ export function ScheduleGrid({
 
   return (
     <div className="schedule-shell">
-      <div className="schedule-grid" style={{ minWidth: `${72 + displayMasters.length * 220}px` }}>
+      <div className="schedule-grid" style={{ minWidth: `${72 + displayColumns.length * 220}px` }}>
         <div className="schedule-time-column">
           <div className="schedule-corner">Час</div>
           {timeSlots.map((time) => <div className="schedule-time" key={time}>{time}</div>)}
         </div>
-        {displayMasters.map((master) => {
-          const masterBookings = dayBookings.filter((booking) => booking.master_id === master.id);
+        {displayColumns.map((column) => {
+          const columnBookings = dayBookings.filter(column.filter);
           return (
-            <div className="master-day" key={master.id}>
+            <div className="master-day" key={column.id}>
               <div className="master-header">
-                {master.photo_url
-                  ? <img src={master.photo_url} alt="" />
-                  : <span className="master-avatar">{master.name.slice(0, 1)}</span>}
-                <span><b>{master.name}</b><small>{master.position || 'Спеціаліст'}</small></span>
+                {column.photoUrl
+                  ? <img src={column.photoUrl} alt="" />
+                  : <span className="master-avatar">{column.title.slice(0, 1)}</span>}
+                <span><b>{column.title}</b><small>{column.subtitle}</small></span>
               </div>
               <div className="master-timeline" style={{ height: timelineHeight }}>
                 {timeSlots.map((time) => (
-                  <button className="empty-slot" key={time} onClick={() => onAddClick(master.id, time)}>
+                  <button className="empty-slot" key={time} onClick={() => column.onAdd(time)}>
                     <span>+ запис</span>
                   </button>
                 ))}
-                {masterBookings.map((booking) => {
-                  const pos = position(booking, masterBookings);
+                {columnBookings.map((booking) => {
+                  const pos = position(booking, columnBookings);
                   const time = zonedTimeHm(booking.datetime, timeZone);
                   const attention = bookingNeedsAttention(booking);
                   return (
@@ -126,6 +169,9 @@ export function ScheduleGrid({
                         <strong>{booking.client_name}</strong>
                         <span className="booking-icons">{attention ? '⚠' : ''}{booking.files_count ? ` 📎${booking.files_count}` : ''}</span>
                       </div>
+                      {column.showDoctor && (
+                        <div className="booking-meta">{booking.master_name || 'Лікар'}</div>
+                      )}
                       <div className="booking-meta"><b>{time}</b> · {booking.service_name}</div>
                       {booking.notes && <div className="booking-note">{booking.notes}</div>}
                       {booking.client_phone && <div className="booking-phone">{booking.client_phone}</div>}
@@ -179,7 +225,13 @@ export function ScheduleGrid({
             </div>
           );
         })}
-        {!displayMasters.length && <div className="schedule-empty">Додайте активного спеціаліста, щоб вести розклад.</div>}
+        {!displayColumns.length && (
+          <div className="schedule-empty">
+            {viewMode === 'room'
+              ? 'Додайте активний кабінет, щоб вести розклад по кабінетах.'
+              : 'Додайте активного спеціаліста, щоб вести розклад.'}
+          </div>
+        )}
       </div>
     </div>
   );

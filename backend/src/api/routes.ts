@@ -7,7 +7,12 @@ import { optionalTelegramInitDataMiddleware } from '../middleware/telegramInitDa
 import { validateTelegramLoginWidget, isBookingConflictError } from '../utils/telegram';
 import { signJwt, signSalonSelectionJwt, verifySalonSelectionJwt } from '../utils/jwt';
 import { encryptBotToken } from '../utils/salon';
-import { hasBookingConflict, normalizePhone, clientInitials } from '../utils/crm';
+import {
+  hasBookingConflict,
+  hasRoomBookingConflict,
+  normalizePhone,
+  clientInitials,
+} from '../utils/crm';
 import {
   generateSlots,
   findAvailableMaster,
@@ -174,10 +179,13 @@ function withConflictFlags(
   filesByClient: Map<string, number> = new Map()
 ) {
   return bookings.map((booking) => {
-    const hasConflict = hasBookingConflict(booking, conflictCandidates);
+    const hasConflict =
+      hasBookingConflict(booking, conflictCandidates) ||
+      hasRoomBookingConflict(booking, conflictCandidates);
     const client = Array.isArray(booking.clients) ? booking.clients[0] : booking.clients;
     const master = Array.isArray(booking.masters) ? booking.masters[0] : booking.masters;
     const service = Array.isArray(booking.services) ? booking.services[0] : booking.services;
+    const room = Array.isArray(booking.rooms) ? booking.rooms[0] : booking.rooms;
     return {
       ...booking,
       datetime: booking.booking_datetime,
@@ -187,10 +195,70 @@ function withConflictFlags(
       master_name: master?.name,
       service_name: service?.name_uk,
       service_price: service?.price,
+      room_id: booking.room_id ?? null,
+      room_name: room?.name ?? null,
       has_conflict: hasConflict,
       files_count: booking.client_id ? filesByClient.get(booking.client_id) ?? 0 : 0,
     };
   });
+}
+
+async function resolveRoomId(
+  salonId: string,
+  roomId: unknown
+): Promise<{ id: string } | null | undefined> {
+  if (roomId === undefined) return undefined;
+  if (roomId === null || roomId === '') return null;
+  if (typeof roomId !== 'string') return null;
+  const { data } = await supabase
+    .from('rooms')
+    .select('id')
+    .eq('id', roomId)
+    .eq('salon_id', salonId)
+    .eq('is_active', true)
+    .maybeSingle();
+  return data ?? null;
+}
+
+async function assertRoomAvailable(params: {
+  salonId: string;
+  roomId: string | null;
+  bookingDatetime: string;
+  durationMinutes: number;
+  excludeBookingId?: string;
+}): Promise<string | null> {
+  const { salonId, roomId, bookingDatetime, durationMinutes, excludeBookingId } = params;
+  if (!roomId) return null;
+
+  const start = new Date(bookingDatetime);
+  if (Number.isNaN(start.getTime())) return 'Invalid datetime';
+  const windowStart = new Date(start.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  const windowEnd = new Date(start.getTime() + 24 * 60 * 60 * 1000).toISOString();
+
+  let query = supabase
+    .from('bookings')
+    .select('id, master_id, room_id, booking_datetime, duration_minutes, status')
+    .eq('salon_id', salonId)
+    .eq('room_id', roomId)
+    .neq('status', 'cancelled')
+    .gte('booking_datetime', windowStart)
+    .lte('booking_datetime', windowEnd);
+
+  if (excludeBookingId) query = query.neq('id', excludeBookingId);
+
+  const { data } = await query;
+  const probe = {
+    id: excludeBookingId ?? 'new',
+    master_id: '',
+    room_id: roomId,
+    booking_datetime: bookingDatetime,
+    duration_minutes: durationMinutes,
+    status: 'confirmed',
+  };
+  if (hasRoomBookingConflict(probe, data ?? [])) {
+    return 'Цей кабінет уже зайнятий у цей час';
+  }
+  return null;
 }
 
 const bookingLimiter = rateLimit({
@@ -1125,7 +1193,9 @@ router.get('/admin/bookings', async (req: Request, res: Response) => {
   const timeZone = await loadSalonTimezone(salonId);
   let query = supabase
     .from('bookings')
-    .select('*, masters(name), services(name_uk, price, duration_minutes), clients(*), booking_notes(*)')
+    .select(
+      '*, masters(name), services(name_uk, price, duration_minutes), clients(*), booking_notes(*), rooms(name)'
+    )
     .eq('salon_id', salonId);
   let dayStartIso: string | null = null;
   let dayEndIso: string | null = null;
@@ -1155,7 +1225,7 @@ router.get('/admin/bookings', async (req: Request, res: Response) => {
   const masterIds = [...new Set(bookings.map((booking) => booking.master_id))];
   let conflictQuery = supabase
     .from('bookings')
-    .select('id, master_id, booking_datetime, duration_minutes, status')
+    .select('id, master_id, room_id, booking_datetime, duration_minutes, status')
     .eq('salon_id', salonId)
     .in('master_id', masterIds)
     .neq('status', 'cancelled');
@@ -1213,7 +1283,7 @@ router.get('/admin/bookings/stream', async (req: Request, res: Response) => {
 
 router.post('/admin/bookings', async (req: Request, res: Response) => {
   const salonId = req.auth!.salon_id!;
-  const { masterId, serviceId, clientId, clientName, clientPhone, datetime, notes } = req.body;
+  const { masterId, serviceId, clientId, clientName, clientPhone, datetime, notes, roomId } = req.body;
   if (!masterId || !serviceId || !datetime || (!clientId && !clientName)) {
     res.status(400).json({ error: 'masterId, serviceId, datetime and client are required' });
     return;
@@ -1237,6 +1307,22 @@ router.post('/admin/bookings', async (req: Request, res: Response) => {
   ]);
   if (!master || !service) {
     res.status(400).json({ error: 'Master or service not found' });
+    return;
+  }
+  const room = await resolveRoomId(salonId, roomId);
+  if (roomId !== undefined && roomId !== null && roomId !== '' && room === null) {
+    res.status(400).json({ error: 'Room not found' });
+    return;
+  }
+  const nextRoomId = room === undefined ? null : room?.id ?? null;
+  const roomBusy = await assertRoomAvailable({
+    salonId,
+    roomId: nextRoomId,
+    bookingDatetime: normalizedDatetime,
+    durationMinutes: service.duration_minutes,
+  });
+  if (roomBusy) {
+    res.status(409).json({ error: roomBusy });
     return;
   }
   const client = await resolveClient(salonId, { clientId, clientName, clientPhone });
@@ -1265,8 +1351,9 @@ router.post('/admin/bookings', async (req: Request, res: Response) => {
       status: 'confirmed',
       visit_status: count === 0 ? 'first_visit' : 'scheduled',
       notes: notes ?? null,
+      room_id: nextRoomId,
     })
-    .select('*, masters(name), services(name_uk, price), clients(*), booking_notes(*)')
+    .select('*, masters(name), services(name_uk, price), clients(*), booking_notes(*), rooms(name)')
     .single();
   if (error || !data) {
     res.status(500).json({ error: error?.message ?? 'Failed to create booking' });
@@ -1365,6 +1452,7 @@ router.patch('/admin/bookings/:id', async (req: Request, res: Response) => {
     serviceId,
     datetime,
     clientId,
+    roomId,
   } = req.body;
   const nextVisitStatus = visit_status ?? visitStatus;
   if (status !== undefined && !BOOKING_STATUSES.includes(status)) {
@@ -1395,6 +1483,15 @@ router.patch('/admin/bookings/:id', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'Master or service not found' });
     return;
   }
+  let nextRoomId: string | null = existing.room_id ?? null;
+  if (roomId !== undefined) {
+    const room = await resolveRoomId(salonId, roomId);
+    if (roomId !== null && roomId !== '' && room === null) {
+      res.status(400).json({ error: 'Room not found' });
+      return;
+    }
+    nextRoomId = room?.id ?? null;
+  }
   let client = null;
   if (clientId !== undefined) {
     client = await resolveClient(salonId, { clientId });
@@ -1407,6 +1504,7 @@ router.patch('/admin/bookings/:id', async (req: Request, res: Response) => {
     master_id: master.id,
     service_id: service.id,
     duration_minutes: service.duration_minutes,
+    room_id: nextRoomId,
   };
   if (status !== undefined) update.status = status;
   if (notes !== undefined) update.notes = notes;
@@ -1432,12 +1530,26 @@ router.patch('/admin/bookings/:id', async (req: Request, res: Response) => {
     update.client_phone = client.phone;
     update.client_telegram_id = client.telegram_id ?? -Date.now();
   }
+  const bookingDatetime = String(update.booking_datetime ?? existing.booking_datetime);
+  const roomBusy = await assertRoomAvailable({
+    salonId,
+    roomId: nextRoomId,
+    bookingDatetime,
+    durationMinutes: service.duration_minutes,
+    excludeBookingId: existing.id,
+  });
+  if (roomBusy) {
+    res.status(409).json({ error: roomBusy });
+    return;
+  }
   const { data, error } = await supabase
     .from('bookings')
     .update(update)
     .eq('id', existing.id)
     .eq('salon_id', salonId)
-    .select('*, masters(name), services(name_uk, price, duration_minutes), clients(*), booking_notes(*)')
+    .select(
+      '*, masters(name), services(name_uk, price, duration_minutes), clients(*), booking_notes(*), rooms(name)'
+    )
     .single();
   if (error || !data) {
     res.status(500).json({ error: error?.message ?? 'Failed to update booking' });
@@ -1453,6 +1565,101 @@ router.patch('/admin/bookings/:id', async (req: Request, res: Response) => {
   }
   publishSalonBookingsChanged(salonId);
   res.json(withConflictFlags([data])[0]);
+});
+
+// Rooms CRUD
+router.get('/admin/rooms', async (req: Request, res: Response) => {
+  const { data, error } = await supabase
+    .from('rooms')
+    .select('id, salon_id, name, sort_order, is_active, created_at')
+    .eq('salon_id', req.auth!.salon_id!)
+    .order('sort_order')
+    .order('name');
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+  res.json(data ?? []);
+});
+
+router.post('/admin/rooms', async (req: Request, res: Response) => {
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+  if (!name) {
+    res.status(400).json({ error: 'name is required' });
+    return;
+  }
+  const sortOrder = Number.isFinite(Number(req.body?.sort_order)) ? Number(req.body.sort_order) : 0;
+  const { data, error } = await supabase
+    .from('rooms')
+    .insert({
+      salon_id: req.auth!.salon_id!,
+      name,
+      sort_order: sortOrder,
+      is_active: req.body?.is_active !== false,
+    })
+    .select()
+    .single();
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+  res.status(201).json(data);
+});
+
+router.patch('/admin/rooms/:id', async (req: Request, res: Response) => {
+  const update: Record<string, unknown> = {};
+  if (typeof req.body?.name === 'string') {
+    const name = req.body.name.trim();
+    if (!name) {
+      res.status(400).json({ error: 'name is required' });
+      return;
+    }
+    update.name = name;
+  }
+  if (req.body?.sort_order !== undefined) {
+    update.sort_order = Number(req.body.sort_order) || 0;
+  }
+  if (req.body?.is_active !== undefined) update.is_active = Boolean(req.body.is_active);
+  if (!Object.keys(update).length) {
+    res.status(400).json({ error: 'Nothing to update' });
+    return;
+  }
+  const { data, error } = await supabase
+    .from('rooms')
+    .update(update)
+    .eq('id', req.params.id)
+    .eq('salon_id', req.auth!.salon_id!)
+    .select()
+    .maybeSingle();
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+  if (!data) {
+    res.status(404).json({ error: 'Room not found' });
+    return;
+  }
+  res.json(data);
+});
+
+router.delete('/admin/rooms/:id', async (req: Request, res: Response) => {
+  const salonId = req.auth!.salon_id!;
+  const { data, error } = await supabase
+    .from('rooms')
+    .update({ is_active: false })
+    .eq('id', req.params.id)
+    .eq('salon_id', salonId)
+    .select()
+    .maybeSingle();
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+  if (!data) {
+    res.status(404).json({ error: 'Room not found' });
+    return;
+  }
+  res.json(data);
 });
 
 // Masters CRUD

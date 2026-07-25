@@ -4,6 +4,7 @@ import { useAuth } from './context/AuthContext';
 import { LoginPage } from './pages/LoginPage';
 import { MastersPage } from './pages/MastersPage';
 import { OnboardingPage } from './pages/OnboardingPage';
+import { RoomsPage } from './pages/RoomsPage';
 import { SchedulePage } from './pages/SchedulePage';
 import { ServicesPage } from './pages/ServicesPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -31,6 +32,7 @@ export default function App() {
         <Route path="/clients" element={<ClientsPage />} />
         <Route path="/clients/:id" element={<ClientDetailsPage />} />
         <Route path="/masters" element={<MastersPage />} />
+        <Route path="/rooms" element={<RoomsPage />} />
         <Route path="/services" element={<ServicesPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>

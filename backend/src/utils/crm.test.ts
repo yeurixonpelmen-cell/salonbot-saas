@@ -4,6 +4,7 @@ import {
   ConflictBooking,
   clientInitials,
   hasBookingConflict,
+  hasRoomBookingConflict,
   intervalsOverlap,
   normalizePhone,
 } from './crm';
@@ -77,5 +78,26 @@ describe('booking conflicts', () => {
     });
 
     assert.equal(hasBookingConflict(booking(), [candidate]), false);
+  });
+
+  it('detects overlapping bookings in the same room', () => {
+    const active = booking({ room_id: 'room-1', master_id: 'master-1' });
+    const candidate = booking({
+      id: 'booking-2',
+      room_id: 'room-1',
+      master_id: 'master-2',
+      booking_datetime: '2026-07-21T10:30:00.000Z',
+    });
+    assert.equal(hasRoomBookingConflict(active, [candidate]), true);
+  });
+
+  it('ignores room overlaps when room_id is missing', () => {
+    const active = booking({ room_id: null });
+    const candidate = booking({
+      id: 'booking-2',
+      room_id: 'room-1',
+      booking_datetime: '2026-07-21T10:30:00.000Z',
+    });
+    assert.equal(hasRoomBookingConflict(active, [candidate]), false);
   });
 });

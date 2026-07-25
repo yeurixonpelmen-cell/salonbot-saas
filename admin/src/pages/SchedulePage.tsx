@@ -1,10 +1,16 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  api, getApiUrl, getToken, Booking, BookingStatus, Client, CreateBookingPayload, Master, SalonSettings, Service,
+  api, getApiUrl, getToken, Booking, BookingStatus, Client, CreateBookingPayload, Master, Room, SalonSettings, Service,
   UpdateBookingPayload, VisitStatus, GRID_END_HOUR, GRID_START_HOUR, statusLabel, visitStatusLabel,
 } from '../api';
-import { ScheduleGrid, formatDisplayDate, shiftDate } from '../components/ScheduleGrid';
+import {
+  ScheduleGrid,
+  ScheduleViewMode,
+  formatDisplayDate,
+  shiftDate,
+  type ScheduleAddDraft,
+} from '../components/ScheduleGrid';
 import { Button, Drawer, Input, Modal } from '../components/ui';
 import {
   DEFAULT_SALON_TIMEZONE,
@@ -12,7 +18,7 @@ import {
   todayInTimeZone,
 } from '../utils/datetime';
 
-type AddDraft = { masterId: string; time: string } | null;
+type AddDraft = ScheduleAddDraft | null;
 const VISIT_STATUSES: VisitStatus[] = ['scheduled', 'first_visit', 'waiting', 'in_progress', 'refused', 'completed'];
 const BOOKING_STATUSES: BookingStatus[] = ['pending', 'confirmed', 'cancelled', 'completed'];
 
@@ -22,13 +28,23 @@ export function SchedulePage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [masters, setMasters] = useState<Master[]>([]);
   const [services, setServices] = useState<Service[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [viewMode, setViewMode] = useState<ScheduleViewMode>('master');
   const [selected, setSelected] = useState<Booking | null>(null);
-  const [addDraft, setAddDraft] = useState<AddDraft | null>(null);
-  const [mobileMasterIndex, setMobileMasterIndex] = useState(0);
+  const [addDraft, setAddDraft] = useState<AddDraft>(null);
+  const [mobileColumnIndex, setMobileColumnIndex] = useState(0);
   const [visitFilter, setVisitFilter] = useState<VisitStatus | 'all'>('all');
   const [attentionOnly, setAttentionOnly] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const activeRooms = useMemo(() => rooms.filter((room) => room.is_active), [rooms]);
+  const showRoomToggle = activeRooms.length > 0;
+  const mobileColumns = viewMode === 'room' ? activeRooms : masters;
+  const mobileLabel =
+    viewMode === 'room'
+      ? activeRooms[mobileColumnIndex]?.name ?? 'Кабінет'
+      : masters[mobileColumnIndex]?.name ?? 'Спеціаліст';
 
   const refetch = useCallback(async () => {
     const data = await api.get<Booking[]>(`/api/admin/bookings?date=${encodeURIComponent(date)}`);
@@ -42,9 +58,11 @@ export function SchedulePage() {
       api.get<Master[]>('/api/admin/masters'),
       api.get<Service[]>('/api/admin/services'),
       api.get<SalonSettings>('/api/admin/salon'),
-    ]).then(([masterData, serviceData, salon]) => {
+      api.get<Room[]>('/api/admin/rooms').catch(() => [] as Room[]),
+    ]).then(([masterData, serviceData, salon, roomData]) => {
       setMasters(masterData);
       setServices(serviceData);
+      setRooms(roomData);
       const tz = salon.timezone?.trim() || DEFAULT_SALON_TIMEZONE;
       setTimeZone(tz);
       setDate((current) => current || todayInTimeZone(tz));
@@ -55,6 +73,14 @@ export function SchedulePage() {
   useEffect(() => {
     refetch().catch((err: { error?: string }) => setError(err.error ?? 'Не вдалося завантажити записи'));
   }, [refetch]);
+
+  useEffect(() => {
+    setMobileColumnIndex(0);
+  }, [viewMode]);
+
+  useEffect(() => {
+    if (!showRoomToggle && viewMode === 'room') setViewMode('master');
+  }, [showRoomToggle, viewMode]);
 
   useEffect(() => {
     const token = getToken();
@@ -121,13 +147,14 @@ export function SchedulePage() {
       next[index] = {
         ...prev,
         ...updated,
-        // PATCH conflict scan is single-row; keep local flags until background refetch
         has_conflict: prev.has_conflict,
         files_count: updated.files_count || prev.files_count,
         master_name: updated.master_name ?? prev.master_name,
         service_name: updated.service_name ?? prev.service_name,
         service_price: updated.service_price ?? prev.service_price,
         duration_minutes: updated.duration_minutes ?? prev.duration_minutes,
+        room_id: updated.room_id !== undefined ? updated.room_id : prev.room_id,
+        room_name: updated.room_name ?? prev.room_name,
       };
       return next;
     });
@@ -147,7 +174,14 @@ export function SchedulePage() {
           <h1>Розклад</h1>
           <p>{formatDisplayDate(date)} · {bookings.length} записів</p>
         </div>
-        <Button onClick={() => setAddDraft({ masterId: masters[0]?.id ?? '', time: '09:00' })} disabled={!masters.length}>
+        <Button
+          onClick={() => setAddDraft({
+            masterId: masters[0]?.id ?? '',
+            roomId: viewMode === 'room' ? activeRooms[0]?.id ?? null : null,
+            time: '09:00',
+          })}
+          disabled={!masters.length}
+        >
           + Новий запис
         </Button>
       </header>
@@ -160,6 +194,24 @@ export function SchedulePage() {
           <Button variant="ghost" onClick={() => setDate(todayInTimeZone(timeZone))}>Сьогодні</Button>
         </div>
         <div className="schedule-filters">
+          {showRoomToggle && (
+            <div className="view-toggle" role="group" aria-label="Вид розкладу">
+              <button
+                type="button"
+                className={viewMode === 'master' ? 'active' : ''}
+                onClick={() => setViewMode('master')}
+              >
+                Лікарі
+              </button>
+              <button
+                type="button"
+                className={viewMode === 'room' ? 'active' : ''}
+                onClick={() => setViewMode('room')}
+              >
+                Кабінети
+              </button>
+            </div>
+          )}
           <select className="ui-input" value={visitFilter} onChange={(event) => setVisitFilter(event.target.value as VisitStatus | 'all')}>
             <option value="all">Усі стани візиту</option>
             {VISIT_STATUSES.map((status) => <option value={status} key={status}>{visitStatusLabel(status)}</option>)}
@@ -184,19 +236,27 @@ export function SchedulePage() {
       {loading && <div className="notice">Завантаження…</div>}
 
       <div className="mobile-master-switch">
-        <Button variant="secondary" disabled={mobileMasterIndex === 0} onClick={() => setMobileMasterIndex((index) => index - 1)}>←</Button>
-        <strong>{masters[mobileMasterIndex]?.name ?? 'Спеціаліст'}</strong>
-        <Button variant="secondary" disabled={mobileMasterIndex >= masters.length - 1} onClick={() => setMobileMasterIndex((index) => index + 1)}>→</Button>
+        <Button variant="secondary" disabled={mobileColumnIndex === 0} onClick={() => setMobileColumnIndex((index) => index - 1)}>←</Button>
+        <strong>{mobileLabel}</strong>
+        <Button
+          variant="secondary"
+          disabled={mobileColumnIndex >= mobileColumns.length - 1}
+          onClick={() => setMobileColumnIndex((index) => index + 1)}
+        >
+          →
+        </Button>
       </div>
 
       <ScheduleGrid
         bookings={filteredBookings}
         masters={masters}
+        rooms={rooms}
+        viewMode={viewMode}
         date={date}
         timeZone={timeZone}
-        mobileMasterIndex={mobileMasterIndex}
+        mobileColumnIndex={mobileColumnIndex}
         onBookingClick={setSelected}
-        onAddClick={(masterId, time) => setAddDraft({ masterId, time })}
+        onAddClick={setAddDraft}
         onNoteSave={(booking, notes) => updateBooking(booking.id, { notes })}
       />
 
@@ -206,6 +266,7 @@ export function SchedulePage() {
           booking={selected}
           masters={masters}
           services={services}
+          rooms={activeRooms}
           timeZone={timeZone}
           onClose={() => setSelected(null)}
           onSave={async (payload) => {
@@ -220,6 +281,7 @@ export function SchedulePage() {
           date={date}
           masters={masters}
           services={services}
+          rooms={activeRooms}
           onClose={() => setAddDraft(null)}
           onCreated={() => {
             setAddDraft(null);
@@ -232,11 +294,12 @@ export function SchedulePage() {
 }
 
 function BookingDrawer({
-  booking, masters, services, timeZone, onClose, onSave,
+  booking, masters, services, rooms, timeZone, onClose, onSave,
 }: {
   booking: Booking;
   masters: Master[];
   services: Service[];
+  rooms: Room[];
   timeZone: string;
   onClose: () => void;
   onSave: (payload: UpdateBookingPayload) => Promise<void>;
@@ -250,6 +313,7 @@ function BookingDrawer({
     notes: booking.notes ?? '',
     masterId: booking.master_id,
     serviceId: booking.service_id,
+    roomId: booking.room_id ?? '',
     datetime: initialDatetime,
   });
   const [saving, setSaving] = useState(false);
@@ -279,6 +343,7 @@ function BookingDrawer({
         notes: form.notes,
         masterId: form.masterId,
         serviceId: form.serviceId,
+        roomId: form.roomId || null,
       };
       if (form.datetime !== initialDatetime) {
         payload.datetime = form.datetime;
@@ -322,6 +387,12 @@ function BookingDrawer({
           <label>Послуга<select value={form.serviceId} onChange={(e) => setForm({ ...form, serviceId: e.target.value })}>
             {services.map((service) => <option key={service.id} value={service.id}>{service.name_uk}</option>)}
           </select></label>
+          {!!rooms.length && (
+            <label className="full">Кабінет<select value={form.roomId} onChange={(e) => setForm({ ...form, roomId: e.target.value })}>
+              <option value="">Без кабінету</option>
+              {rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}
+            </select></label>
+          )}
           <label className="full">
             Дата й час
             <input type="datetime-local" step={1800} value={form.datetime} onChange={(e) => setForm({ ...form, datetime: e.target.value })} />
@@ -340,16 +411,18 @@ function BookingDrawer({
 }
 
 function BookingForm({
-  draft, date, masters, services, onClose, onCreated,
+  draft, date, masters, services, rooms, onClose, onCreated,
 }: {
-  draft: { masterId: string; time: string };
+  draft: ScheduleAddDraft;
   date: string;
   masters: Master[];
   services: Service[];
+  rooms: Room[];
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const [masterId, setMasterId] = useState(draft.masterId);
+  const [masterId, setMasterId] = useState(draft.masterId || masters[0]?.id || '');
+  const [roomId, setRoomId] = useState(draft.roomId ?? '');
   const [serviceId, setServiceId] = useState(services[0]?.id ?? '');
   const [time, setTime] = useState(draft.time);
   const [query, setQuery] = useState('');
@@ -389,6 +462,7 @@ function BookingForm({
     setError('');
     const body: CreateBookingPayload = {
       masterId, serviceId, datetime: `${date}T${time}:00`, notes,
+      roomId: roomId || null,
       ...(clientId ? { clientId } : { clientName, clientPhone }),
     };
     try {
@@ -412,6 +486,12 @@ function BookingForm({
         {!clientId && clientName && <Button className="full" type="button" variant="secondary" onClick={quickCreate}>+ Створити картку клієнта</Button>}
         <label>Спеціаліст<select required value={masterId} onChange={(e) => setMasterId(e.target.value)}>{masters.map((master) => <option key={master.id} value={master.id}>{master.name}</option>)}</select></label>
         <label>Послуга<select required value={serviceId} onChange={(e) => setServiceId(e.target.value)}>{services.map((service) => <option key={service.id} value={service.id}>{service.name_uk}</option>)}</select></label>
+        {!!rooms.length && (
+          <label>Кабінет<select value={roomId} onChange={(e) => setRoomId(e.target.value)}>
+            <option value="">Без кабінету</option>
+            {rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}
+          </select></label>
+        )}
         <label>Час<input type="time" required value={time} onChange={(e) => setTime(e.target.value)} /></label>
         <label className="full">Нотатки<textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
         <Button className="full" type="submit" disabled={saving}>{saving ? 'Збереження…' : 'Створити запис'}</Button>

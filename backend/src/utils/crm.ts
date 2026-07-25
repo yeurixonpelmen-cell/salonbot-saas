@@ -1,6 +1,7 @@
 export interface ConflictBooking {
   id: string;
   master_id: string;
+  room_id?: string | null;
   booking_datetime: string;
   duration_minutes: number;
   status: string;
@@ -48,6 +49,32 @@ export function hasBookingConflict(
     if (
       candidate.id === booking.id ||
       candidate.master_id !== booking.master_id ||
+      candidate.status === 'cancelled'
+    ) {
+      return false;
+    }
+
+    const candidateStart = new Date(candidate.booking_datetime).getTime();
+    const candidateEnd =
+      candidateStart + Number(candidate.duration_minutes) * 60_000;
+    return intervalsOverlap(start, end, candidateStart, candidateEnd);
+  });
+}
+
+export function hasRoomBookingConflict(
+  booking: ConflictBooking,
+  candidates: ConflictBooking[]
+): boolean {
+  if (booking.status === 'cancelled' || !booking.room_id) return false;
+
+  const start = new Date(booking.booking_datetime).getTime();
+  const end = start + Number(booking.duration_minutes) * 60_000;
+
+  return candidates.some((candidate) => {
+    if (
+      candidate.id === booking.id ||
+      !candidate.room_id ||
+      candidate.room_id !== booking.room_id ||
       candidate.status === 'cancelled'
     ) {
       return false;
