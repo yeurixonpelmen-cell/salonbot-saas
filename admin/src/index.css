@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 :root {
+  color-scheme: only light;
   --ink: #12201f;
   --muted: #5f736f;
   --line: #d7e4e1;
@@ -24,6 +25,23 @@
   background: var(--canvas);
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
+}
+html[data-theme='light'] {
+  color-scheme: only light;
+}
+html[data-theme='light'] body,
+html[data-theme='light'] .app-main {
+  color: var(--ink);
+  background:
+    radial-gradient(1200px 500px at 10% -10%, #d7efe9 0%, transparent 55%),
+    radial-gradient(900px 420px at 100% 0%, #e4eef8 0%, transparent 50%),
+    var(--canvas);
+}
+html[data-theme='light'] .settings-card,
+html[data-theme='light'] .content-card,
+html[data-theme='light'] .bg-white {
+  background: #ffffff !important;
+  color: var(--ink) !important;
 }
 * { box-sizing: border-box; }
 body {
@@ -721,14 +739,16 @@ html[data-theme='dark'] .view-toggle button.active {
 }
 
 html[data-theme='dark'] {
-  color-scheme: dark;
+  color-scheme: only dark;
   color: #e6e8ee;
-  background: #2a2c33;
+  background: #1e2026;
 }
 html[data-theme='dark'] body,
 html[data-theme='dark'] .app-main {
-  background: #2a2c33;
+  background: #1e2026 !important;
   color: #e6e8ee;
+  /* Kill light-theme decorative gradients on Android */
+  background-image: none !important;
 }
 html[data-theme='dark'] .app-sidebar {
   background: #32343c;
@@ -780,11 +800,20 @@ html[data-theme='dark'] .schedule-shell,
 html[data-theme='dark'] .mobile-master-switch,
 html[data-theme='dark'] .ui-modal,
 html[data-theme='dark'] .ui-drawer,
-html[data-theme='dark'] .bg-white {
-  background: #353740 !important;
-  border-color: #4a4d58 !important;
+html[data-theme='dark'] .bg-white,
+html[data-theme='dark'] .rounded-2xl.border,
+html[data-theme='dark'] .rounded-xl.border,
+html[data-theme='dark'] form.settings-card label.rounded-xl {
+  background: #2b2e36 !important;
+  border-color: #454854 !important;
   color: #e6e8ee !important;
   box-shadow: none !important;
+}
+html[data-theme='dark'] .settings-card .bg-gray-50,
+html[data-theme='dark'] .rounded-xl.bg-gray-50 {
+  background: #24272e !important;
+  border-color: #454854 !important;
+  color: #c2c6d0 !important;
 }
 html[data-theme='dark'] .client-row {
   border-bottom-color: #4a4d58;
