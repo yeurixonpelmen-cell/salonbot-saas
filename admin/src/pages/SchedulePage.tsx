@@ -1,7 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  api, Booking, BookingStatus, Client, CreateBookingPayload, Master, SalonSettings, Service,
+  api, getApiUrl, getToken, Booking, BookingStatus, Client, CreateBookingPayload, Master, SalonSettings, Service,
   UpdateBookingPayload, VisitStatus, GRID_END_HOUR, GRID_START_HOUR, statusLabel, visitStatusLabel,
 } from '../api';
 import { ScheduleGrid, formatDisplayDate, shiftDate } from '../components/ScheduleGrid';
@@ -57,8 +57,53 @@ export function SchedulePage() {
   }, [refetch]);
 
   useEffect(() => {
-    const id = window.setInterval(() => refetch().catch(console.error), 15000);
-    return () => window.clearInterval(id);
+    const token = getToken();
+    if (!token) return;
+
+    let es: EventSource | null = null;
+    let debounceTimer = 0;
+    let reconnectTimer = 0;
+    let closed = false;
+
+    const scheduleRefetch = () => {
+      window.clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(() => {
+        refetch().catch(console.error);
+      }, 120);
+    };
+
+    const connect = () => {
+      if (closed) return;
+      const url = `${getApiUrl()}/api/admin/bookings/stream?token=${encodeURIComponent(token)}`;
+      es = new EventSource(url);
+      es.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data) as { type?: string };
+          if (payload.type === 'bookings_changed') scheduleRefetch();
+        } catch {
+          /* ignore malformed ping/payload */
+        }
+      };
+      es.onerror = () => {
+        es?.close();
+        es = null;
+        if (closed) return;
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = window.setTimeout(connect, 2000);
+      };
+    };
+
+    connect();
+
+    const fallback = window.setInterval(() => refetch().catch(console.error), 60000);
+
+    return () => {
+      closed = true;
+      window.clearTimeout(debounceTimer);
+      window.clearTimeout(reconnectTimer);
+      window.clearInterval(fallback);
+      es?.close();
+    };
   }, [refetch]);
 
   const filteredBookings = useMemo(() => bookings.filter((booking) => {
@@ -67,9 +112,31 @@ export function SchedulePage() {
     return true;
   }), [bookings, visitFilter, attentionOnly]);
 
+  function applyBooking(updated: Booking) {
+    setBookings((current) => {
+      const index = current.findIndex((item) => item.id === updated.id);
+      if (index === -1) return current;
+      const prev = current[index];
+      const next = [...current];
+      next[index] = {
+        ...prev,
+        ...updated,
+        // PATCH conflict scan is single-row; keep local flags until background refetch
+        has_conflict: prev.has_conflict,
+        files_count: updated.files_count || prev.files_count,
+        master_name: updated.master_name ?? prev.master_name,
+        service_name: updated.service_name ?? prev.service_name,
+        service_price: updated.service_price ?? prev.service_price,
+        duration_minutes: updated.duration_minutes ?? prev.duration_minutes,
+      };
+      return next;
+    });
+  }
+
   async function updateBooking(id: string, payload: UpdateBookingPayload) {
-    await api.patch<Booking>(`/api/admin/bookings/${id}`, payload);
-    await refetch();
+    const updated = await api.patch<Booking>(`/api/admin/bookings/${id}`, payload);
+    applyBooking(updated);
+    void refetch().catch(console.error);
   }
 
   return (
@@ -154,7 +221,10 @@ export function SchedulePage() {
           masters={masters}
           services={services}
           onClose={() => setAddDraft(null)}
-          onCreated={async () => { setAddDraft(null); await refetch(); }}
+          onCreated={() => {
+            setAddDraft(null);
+            void refetch().catch((err: { error?: string }) => setError(err.error ?? 'Не вдалося оновити записи'));
+          }}
         />
       )}
     </div>
@@ -277,7 +347,7 @@ function BookingForm({
   masters: Master[];
   services: Service[];
   onClose: () => void;
-  onCreated: () => Promise<void>;
+  onCreated: () => void;
 }) {
   const [masterId, setMasterId] = useState(draft.masterId);
   const [serviceId, setServiceId] = useState(services[0]?.id ?? '');
@@ -323,10 +393,9 @@ function BookingForm({
     };
     try {
       await api.post('/api/admin/bookings', body);
-      await onCreated();
+      onCreated();
     } catch (err) {
       setError((err as { error?: string }).error ?? 'Не вдалося створити запис');
-    } finally {
       setSaving(false);
     }
   }

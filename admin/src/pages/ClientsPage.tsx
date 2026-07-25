@@ -65,12 +65,12 @@ export function ClientsPage() {
           {!clients.length && <div className="empty-state"><b>Клієнтів не знайдено</b><span>Змініть запит або створіть нову картку.</span></div>}
         </div>
       )}
-      {showCreate && <ClientForm onClose={() => setShowCreate(false)} onSaved={async () => { setShowCreate(false); await load(); }} />}
+      {showCreate && <ClientForm onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); void load(); }} />}
     </div>
   );
 }
 
-function ClientForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => Promise<void> }) {
+function ClientForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState<ClientPayload>({ full_name: '', phone: '', email: '', date_of_birth: '', tags: [], general_notes: '' });
   const [tags, setTags] = useState('');
   const [saving, setSaving] = useState(false);

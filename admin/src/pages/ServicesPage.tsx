@@ -108,9 +108,9 @@ export function ServicesPage() {
           draft={draft}
           masters={masters}
           onClose={() => setDraft(null)}
-          onSaved={async () => {
+          onSaved={() => {
             setDraft(null);
-            await load();
+            void load();
           }}
         />
       )}
@@ -127,7 +127,7 @@ function ServiceForm({
   draft: ServiceDraft;
   masters: Master[];
   onClose: () => void;
-  onSaved: () => Promise<void>;
+  onSaved: () => void;
 }) {
   const [form, setForm] = useState<ServiceDraft>(draft);
   const [saving, setSaving] = useState(false);

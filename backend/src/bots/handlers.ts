@@ -1,5 +1,6 @@
 import { Bot, Context } from 'grammy';
 import { supabase } from '../db/client';
+import { publishSalonBookingsChanged } from '../realtime/salonEvents';
 
 function normalizePublicUrl(raw: string | undefined, fallback: string): string {
   const value = (raw ?? fallback).trim();
@@ -143,6 +144,7 @@ async function updateBookingStatus(
     console.error(`Failed to update booking ${bookingId}:`, error);
     return false;
   }
+  if (data) publishSalonBookingsChanged(salonId);
   return Boolean(data);
 }
 

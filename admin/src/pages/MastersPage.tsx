@@ -119,9 +119,9 @@ export function MastersPage() {
         <MasterForm
           draft={draft}
           onClose={() => setDraft(null)}
-          onSaved={async () => {
+          onSaved={() => {
             setDraft(null);
-            await load();
+            void load();
           }}
         />
       )}
@@ -140,7 +140,7 @@ function MasterForm({
 }: {
   draft: MasterDraft;
   onClose: () => void;
-  onSaved: () => Promise<void>;
+  onSaved: () => void;
 }) {
   const [form, setForm] = useState<MasterDraft>({
     ...draft,

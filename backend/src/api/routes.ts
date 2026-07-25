@@ -23,6 +23,7 @@ import {
   resolveSalonTimezone,
 } from '../utils/datetime';
 import { normalizeEmail, verifyPassword } from '../utils/password';
+import { publishSalonBookingsChanged, subscribeSalon } from '../realtime/salonEvents';
 import superRoutes from './superRoutes';
 
 const router = Router();
@@ -393,6 +394,8 @@ router.post(
     master?.name ?? '',
     salon?.address ?? ''
   );
+
+  publishSalonBookingsChanged(salonId);
 
   res.json({
     booking_id: booking.id,
@@ -1183,29 +1186,29 @@ router.get('/admin/bookings', async (req: Request, res: Response) => {
 });
 
 router.get('/admin/bookings/stream', async (req: Request, res: Response) => {
+  const salonId = req.auth!.salon_id!;
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  if (typeof (res as Response & { flushHeaders?: () => void }).flushHeaders === 'function') {
+    (res as Response & { flushHeaders: () => void }).flushHeaders();
+  }
 
-  const salonId = req.auth!.salon_id!;
-  let lastCheck = new Date().toISOString();
+  res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
 
-  const interval = setInterval(async () => {
-    const { data } = await supabase
-      .from('bookings')
-      .select('id, client_name, booking_datetime, updated_at')
-      .eq('salon_id', salonId)
-      .gt('updated_at', lastCheck);
+  const unsubscribe = subscribeSalon(salonId, (event) => {
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  });
 
-    if (data?.length) {
-      res.write(`data: ${JSON.stringify({ type: 'new_bookings', count: data.length })}\n\n`);
-      lastCheck = new Date().toISOString();
-    } else {
-      res.write(`data: ${JSON.stringify({ type: 'ping' })}\n\n`);
-    }
-  }, 15000);
+  const ping = setInterval(() => {
+    res.write(`data: ${JSON.stringify({ type: 'ping' })}\n\n`);
+  }, 25000);
 
-  req.on('close', () => clearInterval(interval));
+  req.on('close', () => {
+    clearInterval(ping);
+    unsubscribe();
+  });
 });
 
 router.post('/admin/bookings', async (req: Request, res: Response) => {
@@ -1275,6 +1278,7 @@ router.post('/admin/bookings', async (req: Request, res: Response) => {
     author_id: req.auth!.owner_telegram_id ?? null,
     body: typeof notes === 'string' && notes.trim() ? notes.trim() : 'Booking created',
   });
+  publishSalonBookingsChanged(salonId);
   res.status(201).json(withConflictFlags([data])[0]);
 });
 
@@ -1447,6 +1451,7 @@ router.patch('/admin/bookings/:id', async (req: Request, res: Response) => {
       body: typeof notes === 'string' && notes.trim() ? notes.trim() : 'Notes cleared',
     });
   }
+  publishSalonBookingsChanged(salonId);
   res.json(withConflictFlags([data])[0]);
 });
 
