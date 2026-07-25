@@ -299,7 +299,55 @@ router.patch('/salons/:id', async (req: Request, res: Response) => {
     res.status(500).json({ error: error.message });
     return;
   }
+
+  if (typeof req.body?.is_active === 'boolean' && req.body.is_active === false) {
+    try {
+      await botManager.removeBot(req.params.id);
+    } catch (err) {
+      console.error('Failed to stop bot after deactivating salon', err);
+    }
+  }
+
   res.json(data);
+});
+
+router.delete('/salons/:id', async (req: Request, res: Response) => {
+  const salonId = req.params.id;
+
+  const { data: salon, error: salonLookupError } = await supabase
+    .from('salons')
+    .select('id, name_uk')
+    .eq('id', salonId)
+    .maybeSingle();
+  if (salonLookupError) {
+    res.status(500).json({ error: salonLookupError.message });
+    return;
+  }
+  if (!salon) {
+    res.status(404).json({ error: 'Салон не знайдено' });
+    return;
+  }
+
+  try {
+    await botManager.removeBot(salonId);
+  } catch (err) {
+    console.error('Failed to stop bot before deleting salon', err);
+  }
+
+  // bookings.salon_id has no ON DELETE CASCADE — delete bookings first
+  const { error: bookingsError } = await supabase.from('bookings').delete().eq('salon_id', salonId);
+  if (bookingsError) {
+    res.status(500).json({ error: bookingsError.message });
+    return;
+  }
+
+  const { error } = await supabase.from('salons').delete().eq('id', salonId);
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+
+  res.json({ ok: true, id: salonId, name_uk: salon.name_uk });
 });
 
 export default router;

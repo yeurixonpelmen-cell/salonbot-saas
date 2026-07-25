@@ -239,6 +239,29 @@ export function SuperAdminPage() {
     }
   }
 
+  async function deleteSalon(salon: SalonRow) {
+    const ok = window.confirm(
+      `Видалити салон «${salon.name_uk}» назавжди?\n\nБуде видалено співробітників, записи, майстрів і зупинено бота. Це незворотно.`
+    );
+    if (!ok) return;
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      await superApi(`/api/super/salons/${salon.id}`, { method: 'DELETE' });
+      if (selectedSalonId === salon.id) {
+        setSelectedSalonId(null);
+        setStaff([]);
+      }
+      setMessage(`Салон «${salon.name_uk}» видалено.`);
+      await loadSalons();
+    } catch (err) {
+      setError((err as { error?: string }).error ?? 'Не вдалось видалити салон');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (!getSuperToken()) return <Navigate to="/super/login" replace />;
 
   return (
@@ -336,9 +359,19 @@ export function SuperAdminPage() {
                     {salon.is_active ? 'активний' : 'вимкнений'}
                   </div>
                 </div>
-                <button type="button" className="px-3 py-2 rounded-lg border" onClick={() => void openStaff(salon.id)}>
-                  Співробітники
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="px-3 py-2 rounded-lg border" onClick={() => void openStaff(salon.id)}>
+                    Співробітники
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    className="px-3 py-2 rounded-lg border border-red-200 text-red-700 bg-red-50"
+                    onClick={() => void deleteSalon(salon)}
+                  >
+                    Видалити
+                  </button>
+                </div>
               </div>
             ))}
             {!salons.length && !loading && <div className="text-gray-500">Поки немає салонів.</div>}
