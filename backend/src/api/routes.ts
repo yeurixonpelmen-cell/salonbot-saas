@@ -1013,6 +1013,33 @@ router.post('/admin/salon/logo', upload.single('logo'), async (req: Request, res
   res.json({ url: urlData.publicUrl });
 });
 
+router.post('/admin/masters/photo', upload.single('photo'), async (req: Request, res: Response) => {
+  if (!req.file) {
+    res.status(400).json({ error: 'No file' });
+    return;
+  }
+  if (!req.file.mimetype.startsWith('image/')) {
+    res.status(400).json({ error: 'Можна лише зображення (фото)' });
+    return;
+  }
+
+  const ext = req.file.originalname.split('.').pop() ?? 'jpg';
+  const path = `${req.auth!.salon_id!}/masters/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+  const { error } = await supabase.storage.from('logos').upload(path, req.file.buffer, {
+    contentType: req.file.mimetype,
+    upsert: true,
+  });
+
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+
+  const { data: urlData } = supabase.storage.from('logos').getPublicUrl(path);
+  res.json({ url: urlData.publicUrl });
+});
+
 function parseClientsQueryFlag(value: unknown): boolean | null {
   if (value === undefined || value === null || value === '') return null;
   const raw = String(value).trim().toLowerCase();

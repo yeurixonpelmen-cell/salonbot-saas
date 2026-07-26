@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, useEffect, useState } from 'react';
+import { ChangeEvent, FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { api, Master, MasterPayload, MasterPortfolioItem, ScheduleRow } from '../api';
 import { Button } from '../components/ui';
 import { useLocale } from '../context/LocaleContext';
@@ -19,7 +19,6 @@ function emptyDraft(): MasterDraft {
   return {
     name: '',
     position: '',
-    photo_url: '',
     bio: '',
     portfolio: [],
     is_active: true,
@@ -99,7 +98,6 @@ export function MastersPage() {
                     id: master.id,
                     name: master.name,
                     position: master.position ?? '',
-                    photo_url: master.photo_url ?? '',
                     bio: master.bio ?? '',
                     portfolio: master.portfolio ?? [],
                     is_active: master.is_active,
@@ -152,26 +150,74 @@ function MasterForm({
     bio: draft.bio ?? '',
   });
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   function updatePortfolio(index: number, patch: Partial<MasterPortfolioItem>) {
-    const portfolio = [...(form.portfolio ?? [])];
-    portfolio[index] = { ...portfolio[index], ...patch };
-    setForm({ ...form, portfolio });
+    setForm((prev) => {
+      const portfolio = [...(prev.portfolio ?? [])];
+      portfolio[index] = { ...portfolio[index], ...patch };
+      return { ...prev, portfolio };
+    });
   }
 
-  function addPortfolioItem(type: 'photo' | 'video') {
-    setForm({
-      ...form,
-      portfolio: [...(form.portfolio ?? []), { type, url: '', caption: '' }],
-    });
+  function addVideoItem() {
+    setForm((prev) => ({
+      ...prev,
+      portfolio: [...(prev.portfolio ?? []), { type: 'video', url: '', caption: '' }],
+    }));
   }
 
   function removePortfolioItem(index: number) {
-    setForm({
-      ...form,
-      portfolio: (form.portfolio ?? []).filter((_, i) => i !== index),
-    });
+    setForm((prev) => ({
+      ...prev,
+      portfolio: (prev.portfolio ?? []).filter((_, i) => i !== index),
+    }));
+  }
+
+  async function uploadPhoto(file: File): Promise<string> {
+    const body = new FormData();
+    body.append('photo', file);
+    const { url } = await api.post<{ url: string }>('/api/admin/masters/photo', body);
+    return url;
+  }
+
+  async function onAddPhotoFiles(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    if (!files.length) return;
+    setUploading(true);
+    setError('');
+    try {
+      for (const file of files) {
+        const url = await uploadPhoto(file);
+        setForm((prev) => ({
+          ...prev,
+          portfolio: [...(prev.portfolio ?? []), { type: 'photo', url, caption: '' }],
+        }));
+      }
+    } catch (err) {
+      setError((err as { error?: string }).error ?? 'Не вдалось завантажити фото');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function onReplacePhoto(index: number, e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploading(true);
+    setError('');
+    try {
+      const url = await uploadPhoto(file);
+      updatePortfolio(index, { url, type: 'photo' });
+    } catch (err) {
+      setError((err as { error?: string }).error ?? 'Не вдалось завантажити фото');
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function submit(e: FormEvent) {
@@ -182,7 +228,6 @@ function MasterForm({
       const payload: MasterPayload = {
         name: form.name,
         position: form.position || null,
-        photo_url: form.photo_url || null,
         bio: form.bio || null,
         is_active: form.is_active,
         portfolio: (form.portfolio ?? [])
@@ -209,7 +254,7 @@ function MasterForm({
         {error && <div className="rounded-lg bg-red-50 border border-red-200 p-2 text-red-800 text-sm">{error}</div>}
         <Input label="Ім'я *" value={form.name} onChange={(name) => setForm({ ...form, name })} required />
         <Input label="Посада" value={form.position ?? ''} onChange={(position) => setForm({ ...form, position })} />
-        <Input label="Фото URL" value={form.photo_url ?? ''} onChange={(photo_url) => setForm({ ...form, photo_url })} />
+
         <label className="block">
           <span className="text-sm text-gray-600">Про себе (необовʼязково)</span>
           <textarea
@@ -225,21 +270,24 @@ function MasterForm({
           <div>
             <div className="font-medium">Портфоліо (необовʼязково)</div>
             <p className="text-xs text-gray-500 mt-1">
-              Додайте посилання на фото або відео робіт (прямі URL, Google Drive публічне, YouTube). Клієнт побачить це при виборі майстра.
+              Фото — файл з телефону/ПК. Відео — лише посилання (YouTube тощо).
             </p>
           </div>
 
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            disabled={uploading}
+            onChange={(e) => void onAddPhotoFiles(e)}
+          />
+
           {(form.portfolio ?? []).map((item, index) => (
-            <div key={index} className="bg-white border rounded-xl p-3 space-y-2">
-              <div className="flex gap-2">
-                <select
-                  value={item.type}
-                  onChange={(e) => updatePortfolio(index, { type: e.target.value as 'photo' | 'video' })}
-                  className="border rounded-lg p-2"
-                >
-                  <option value="photo">Фото</option>
-                  <option value="video">Відео</option>
-                </select>
+            <div key={`${item.type}-${index}-${item.url.slice(0, 24)}`} className="bg-white border rounded-xl p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">{item.type === 'photo' ? 'Фото' : 'Відео'}</span>
                 <button
                   type="button"
                   className="ml-auto text-sm text-red-600"
@@ -248,12 +296,32 @@ function MasterForm({
                   Видалити
                 </button>
               </div>
-              <input
-                value={item.url}
-                onChange={(e) => updatePortfolio(index, { url: e.target.value })}
-                placeholder={item.type === 'video' ? 'https://… відео' : 'https://… фото'}
-                className="w-full border rounded-lg p-2"
-              />
+              {item.type === 'photo' ? (
+                <div className="space-y-2">
+                  {item.url ? (
+                    <img src={item.url} alt="" className="w-full max-h-40 object-cover rounded-lg border" />
+                  ) : (
+                    <div className="text-sm text-gray-400">Фото ще не завантажено</div>
+                  )}
+                  <label className="inline-flex px-3 py-2 rounded-lg border cursor-pointer bg-white text-sm">
+                    {uploading ? 'Завантаження…' : 'Замінити'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={uploading}
+                      onChange={(e) => void onReplacePhoto(index, e)}
+                    />
+                  </label>
+                </div>
+              ) : (
+                <input
+                  value={item.url}
+                  onChange={(e) => updatePortfolio(index, { url: e.target.value })}
+                  placeholder="https://… відео (YouTube тощо)"
+                  className="w-full border rounded-lg p-2"
+                />
+              )}
               <input
                 value={item.caption ?? ''}
                 onChange={(e) => updatePortfolio(index, { caption: e.target.value })}
@@ -264,10 +332,15 @@ function MasterForm({
           ))}
 
           <div className="flex flex-wrap gap-2">
-            <button type="button" className="px-3 py-2 rounded-lg border bg-white" onClick={() => addPortfolioItem('photo')}>
-              + Фото
+            <button
+              type="button"
+              className="px-3 py-2 rounded-lg border bg-white"
+              disabled={uploading}
+              onClick={() => photoInputRef.current?.click()}
+            >
+              {uploading ? 'Завантаження…' : '+ Фото'}
             </button>
-            <button type="button" className="px-3 py-2 rounded-lg border bg-white" onClick={() => addPortfolioItem('video')}>
+            <button type="button" className="px-3 py-2 rounded-lg border bg-white" onClick={addVideoItem}>
               + Відео
             </button>
           </div>
@@ -281,7 +354,7 @@ function MasterForm({
           />
           Активний
         </label>
-        <Button type="submit" disabled={saving} className="w-full">
+        <Button type="submit" disabled={saving || uploading} className="w-full">
           {saving ? 'Збереження...' : 'Зберегти'}
         </Button>
       </form>
