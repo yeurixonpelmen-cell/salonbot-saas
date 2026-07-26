@@ -110,7 +110,6 @@ export function SuperAdminPage() {
   const [saving, setSaving] = useState(false);
   const [activationCodes, setActivationCodes] = useState<ActivationCodeRow[]>([]);
   const [codeNote, setCodeNote] = useState('');
-  const [codeCount, setCodeCount] = useState(1);
   const [lastCreatedCodes, setLastCreatedCodes] = useState<string[]>([]);
 
   async function loadSalons() {
@@ -150,13 +149,12 @@ export function SuperAdminPage() {
     try {
       const result = await superApi<{ codes: ActivationCodeRow[] }>('/api/super/activation-codes', {
         method: 'POST',
-        body: JSON.stringify({ note: codeNote || null, count: codeCount }),
+        body: JSON.stringify({ note: codeNote || null, count: 1 }),
       });
       const codes = result.codes.map((row) => row.code);
       setLastCreatedCodes(codes);
-      setMessage(`Створено кодів: ${codes.length}. Клієнт активує на /onboarding`);
+      setMessage(`Код створено. Скинь клієнту — 1 код = 1 салон`);
       setCodeNote('');
-      setCodeCount(1);
       await loadSalons();
     } catch (err) {
       setError((err as { error?: string }).error ?? 'Не вдалось створити коди');
@@ -387,19 +385,8 @@ export function SuperAdminPage() {
                 placeholder="marina@clinic.com · Beauty Room"
               />
             </label>
-            <label className="block">
-              <span className="text-sm text-gray-600">Скільки кодів</span>
-              <input
-                type="number"
-                min={1}
-                max={20}
-                className="w-full border rounded-lg p-3 mt-1"
-                value={codeCount}
-                onChange={(e) => setCodeCount(Number(e.target.value) || 1)}
-              />
-            </label>
-            <button type="submit" disabled={saving} className="md:col-span-3 py-3 rounded-lg bg-emerald-600 text-white font-medium">
-              {saving ? 'Створення…' : 'Згенерувати код(и)'}
+            <button type="submit" disabled={saving} className="md:col-span-1 py-3 rounded-lg bg-emerald-600 text-white font-medium self-end">
+              {saving ? 'Створення…' : 'Згенерувати 1 код'}
             </button>
           </form>
           {!!lastCreatedCodes.length && (
