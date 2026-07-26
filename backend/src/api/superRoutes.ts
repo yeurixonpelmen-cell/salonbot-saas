@@ -188,17 +188,66 @@ router.get('/salons', async (_req: Request, res: Response) => {
   );
 });
 
+router.get('/salons/:id/people', async (req: Request, res: Response) => {
+  const salonId = req.params.id;
+  const [{ data: staff, error: staffError }, { data: masters, error: mastersError }] = await Promise.all([
+    supabase
+      .from('salon_staff')
+      .select('id, email, full_name, role, is_active, created_at')
+      .eq('salon_id', salonId),
+    supabase
+      .from('masters')
+      .select('id, name, position, is_active, created_at')
+      .eq('salon_id', salonId),
+  ]);
+
+  if (staffError) {
+    res.status(500).json({ error: staffError.message });
+    return;
+  }
+  if (mastersError) {
+    res.status(500).json({ error: mastersError.message });
+    return;
+  }
+
+  const staffList = (staff ?? []).slice().sort((a, b) => a.email.localeCompare(b.email));
+  const masterList = (masters ?? []).slice().sort((a, b) => a.name.localeCompare(b.name));
+  const activeMasters = masterList.filter((m) => m.is_active).length;
+  const monthlyPrice = activeMasters <= 5 ? 850 : 850 + (activeMasters - 5) * 100;
+
+  res.json({
+    staff: staffList,
+    masters: masterList,
+    masters_active: activeMasters,
+    masters_total: masterList.length,
+    monthly_price_uah: monthlyPrice,
+  });
+});
+
 router.get('/salons/:id/masters', async (req: Request, res: Response) => {
   const { data, error } = await supabase
     .from('masters')
     .select('id, name, position, is_active, created_at')
-    .eq('salon_id', req.params.id)
-    .order('name');
+    .eq('salon_id', req.params.id);
   if (error) {
     res.status(500).json({ error: error.message });
     return;
   }
-  res.json(data ?? []);
+  const rows = (data ?? []).slice().sort((a, b) => a.name.localeCompare(b.name));
+  res.json(rows);
+});
+
+router.get('/salons/:id/staff', async (req: Request, res: Response) => {
+  const { data, error } = await supabase
+    .from('salon_staff')
+    .select('id, email, full_name, role, is_active, created_at')
+    .eq('salon_id', req.params.id);
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+  const rows = (data ?? []).slice().sort((a, b) => a.email.localeCompare(b.email));
+  res.json(rows);
 });
 
 router.post('/salons', async (req: Request, res: Response) => {
@@ -301,19 +350,6 @@ router.post('/salons', async (req: Request, res: Response) => {
   }
 
   res.status(201).json({ salon, staff: createdStaff });
-});
-
-router.get('/salons/:id/staff', async (req: Request, res: Response) => {
-  const { data, error } = await supabase
-    .from('salon_staff')
-    .select('id, email, full_name, role, is_active, created_at')
-    .eq('salon_id', req.params.id)
-    .order('created_at');
-  if (error) {
-    res.status(500).json({ error: error.message });
-    return;
-  }
-  res.json(data ?? []);
 });
 
 router.post('/salons/:id/staff', async (req: Request, res: Response) => {

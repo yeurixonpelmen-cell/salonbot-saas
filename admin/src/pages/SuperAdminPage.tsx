@@ -105,8 +105,10 @@ export function SuperAdminPage() {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedSalonId, setSelectedSalonId] = useState<string | null>(null);
+  const [peopleTab, setPeopleTab] = useState<'staff' | 'masters'>('staff');
   const [staff, setStaff] = useState<StaffRow[]>([]);
   const [masters, setMasters] = useState<MasterRow[]>([]);
+  const [peopleMeta, setPeopleMeta] = useState({ masters_active: 0, monthly_price_uah: 850 });
   const [createdPasswords, setCreatedPasswords] = useState<
     { email: string; temporaryPassword: string; emailSent?: boolean; emailError?: string }[]
   >([]);
@@ -250,16 +252,36 @@ export function SuperAdminPage() {
     }
   }
 
-  async function openSalonPeople(salonId: string) {
+  async function openSalonPeople(salonId: string, tab: 'staff' | 'masters' = 'staff') {
     setSelectedSalonId(salonId);
+    setPeopleTab(tab);
     setError('');
+    // Instant preview from list payload (emails already loaded with salons)
+    const preview = salons.find((s) => s.id === salonId);
+    if (preview?.staff?.length) {
+      setStaff(
+        preview.staff.map((row, index) => ({
+          id: `preview-${index}`,
+          email: row.email,
+          full_name: null,
+          role: 'staff',
+          is_active: row.is_active,
+        }))
+      );
+    }
     try {
-      const [staffRows, masterRows] = await Promise.all([
-        superApi<StaffRow[]>(`/api/super/salons/${salonId}/staff`),
-        superApi<MasterRow[]>(`/api/super/salons/${salonId}/masters`),
-      ]);
-      setStaff(staffRows);
-      setMasters(masterRows);
+      const people = await superApi<{
+        staff: StaffRow[];
+        masters: MasterRow[];
+        masters_active: number;
+        monthly_price_uah: number;
+      }>(`/api/super/salons/${salonId}/people`);
+      setStaff(people.staff);
+      setMasters(people.masters);
+      setPeopleMeta({
+        masters_active: people.masters_active,
+        monthly_price_uah: people.monthly_price_uah,
+      });
     } catch (err) {
       setError((err as { error?: string }).error ?? 'Не вдалось завантажити людей салону');
     }
@@ -287,7 +309,7 @@ export function SuperAdminPage() {
         },
       ]);
       setNewStaffEmail('');
-      await openSalonPeople(selectedSalonId);
+      await openSalonPeople(selectedSalonId, 'staff');
       await loadSalons();
       setMessage(
         created.emailSent
@@ -345,6 +367,7 @@ export function SuperAdminPage() {
         setSelectedSalonId(null);
         setStaff([]);
         setMasters([]);
+        setPeopleMeta({ masters_active: 0, monthly_price_uah: 850 });
       }
       setMessage(`Салон «${salon.name_uk}» видалено.`);
       await loadSalons();
@@ -524,14 +547,29 @@ export function SuperAdminPage() {
                 <div>
                   <div className="font-semibold">{salon.name_uk}</div>
                   <div className="text-sm text-gray-500">
-                    {salon.bot_username ? `@${salon.bot_username}` : 'без username'} · логінів: {salon.staff_count} ·{' '}
-                    спеціалістів: {salon.masters_active ?? 0}/{salon.masters_total ?? 0} активних ·{' '}
-                    ~{salon.monthly_price_uah ?? 850} грн/міс · {salon.is_active ? 'салон активний' : 'вимкнений'}
+                    {salon.bot_username ? `@${salon.bot_username}` : 'без username'} · логінів: {salon.staff_count}
+                    {salon.staff?.length
+                      ? ` (${salon.staff.map((s) => s.email).join(', ')})`
+                      : ''}
+                    {' · '}
+                    спеціалістів: {salon.masters_active ?? 0}/{salon.masters_total ?? 0} активних · ~
+                    {salon.monthly_price_uah ?? 850} грн/міс · {salon.is_active ? 'салон активний' : 'вимкнений'}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" className="px-3 py-2 rounded-lg border" onClick={() => void openSalonPeople(salon.id)}>
-                    Люди / тариф
+                  <button
+                    type="button"
+                    className="px-3 py-2 rounded-lg border"
+                    onClick={() => void openSalonPeople(salon.id, 'staff')}
+                  >
+                    Співробітники
+                  </button>
+                  <button
+                    type="button"
+                    className="px-3 py-2 rounded-lg border"
+                    onClick={() => void openSalonPeople(salon.id, 'masters')}
+                  >
+                    Спеціалісти
                   </button>
                   <button
                     type="button"
@@ -557,75 +595,92 @@ export function SuperAdminPage() {
                 : ''}
             </h2>
             <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-sm text-emerald-900">
-              Активних спеціалістів: <b>{masters.filter((m) => m.is_active).length}</b>
+              Активних спеціалістів: <b>{peopleMeta.masters_active}</b>
               {' · '}
-              орієнтовний тариф:{' '}
-              <b>
-                {(() => {
-                  const active = masters.filter((m) => m.is_active).length;
-                  return active <= 5 ? 850 : 850 + (active - 5) * 100;
-                })()}{' '}
-                грн/міс
-              </b>
+              орієнтовний тариф: <b>{peopleMeta.monthly_price_uah} грн/міс</b>
             </div>
 
-            <div className="space-y-2">
-              <h3 className="font-semibold">Співробітники (вхід в адмінку)</h3>
-              <form onSubmit={addStaff} className="flex flex-wrap gap-2">
-                <input
-                  className="border rounded-lg p-3 flex-1 min-w-[220px]"
-                  placeholder="email@clinic.com"
-                  value={newStaffEmail}
-                  onChange={(e) => setNewStaffEmail(e.target.value)}
-                />
-                <button type="submit" disabled={saving} className="px-4 py-3 rounded-lg bg-blue-600 text-white">
-                  Додати
-                </button>
-              </form>
-              <div className="grid gap-2">
-                {staff.map((person) => (
-                  <div key={person.id} className="border rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <div className="font-medium">{person.email}</div>
-                      <div className="text-sm text-gray-500">
-                        {person.role} · {person.is_active ? 'логін активний' : 'логін вимкнений'}
+            <div className="view-toggle" role="group" aria-label="Тип людей">
+              <button
+                type="button"
+                className={peopleTab === 'staff' ? 'active' : ''}
+                onClick={() => setPeopleTab('staff')}
+              >
+                Співробітники ({staff.length})
+              </button>
+              <button
+                type="button"
+                className={peopleTab === 'masters' ? 'active' : ''}
+                onClick={() => setPeopleTab('masters')}
+              >
+                Спеціалісти ({masters.length})
+              </button>
+            </div>
+
+            {peopleTab === 'staff' ? (
+              <div className="space-y-2">
+                <p className="text-sm text-gray-500">Email для входу в адмінку. На тариф не впливають.</p>
+                <form onSubmit={addStaff} className="flex flex-wrap gap-2">
+                  <input
+                    className="border rounded-lg p-3 flex-1 min-w-[220px]"
+                    placeholder="email@clinic.com"
+                    value={newStaffEmail}
+                    onChange={(e) => setNewStaffEmail(e.target.value)}
+                  />
+                  <button type="submit" disabled={saving} className="px-4 py-3 rounded-lg bg-blue-600 text-white">
+                    Додати
+                  </button>
+                </form>
+                <div className="grid gap-2">
+                  {staff.map((person) => (
+                    <div key={person.id} className="border rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="font-medium">{person.email}</div>
+                        <div className="text-sm text-gray-500">
+                          {person.role} · {person.is_active ? 'логін активний' : 'логін вимкнений'}
+                        </div>
                       </div>
+                      {!person.id.startsWith('preview-') && (
+                        <button
+                          type="button"
+                          className="px-3 py-2 rounded-lg border text-sm"
+                          onClick={() => void resetPassword(person.id)}
+                        >
+                          Новий пароль
+                        </button>
+                      )}
                     </div>
-                    <button type="button" className="px-3 py-2 rounded-lg border text-sm" onClick={() => void resetPassword(person.id)}>
-                      Новий пароль
-                    </button>
-                  </div>
-                ))}
-                {!staff.length && <div className="text-sm text-gray-500">Поки немає логінів.</div>}
+                  ))}
+                  {!staff.length && <div className="text-sm text-gray-500">Поки немає логінів.</div>}
+                </div>
               </div>
-            </div>
-
-            <div className="space-y-2 border-t pt-4">
-              <h3 className="font-semibold">Спеціалісти (хто в розкладі / записі)</h3>
-              <p className="text-sm text-gray-500">
-                «Приймає записи» = активний у системі. Назва посади (майстер/асистент) на тариф не впливає.
-              </p>
-              <div className="grid gap-2">
-                {masters.map((master) => (
-                  <div key={master.id} className="border rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <div className="font-medium">{master.name}</div>
-                      <div className="text-sm text-gray-500">{master.position || 'без посади'}</div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm text-gray-500">
+                  Хто в розкладі / онлайн-записі. «Приймає записи» = активний у системі (впливає на тариф).
+                </p>
+                <div className="grid gap-2">
+                  {masters.map((master) => (
+                    <div key={master.id} className="border rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="font-medium">{master.name}</div>
+                        <div className="text-sm text-gray-500">{master.position || 'без посади'}</div>
+                      </div>
+                      <span
+                        className={`text-sm font-medium px-3 py-1 rounded-full ${
+                          master.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'
+                        }`}
+                      >
+                        {master.is_active ? 'Приймає записи' : 'Не приймає'}
+                      </span>
                     </div>
-                    <span
-                      className={`text-sm font-medium px-3 py-1 rounded-full ${
-                        master.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'
-                      }`}
-                    >
-                      {master.is_active ? 'Приймає записи' : 'Не приймає'}
-                    </span>
-                  </div>
-                ))}
-                {!masters.length && (
-                  <div className="text-sm text-gray-500">Спеціалістів ще немає — салон не додав у адмінці.</div>
-                )}
+                  ))}
+                  {!masters.length && (
+                    <div className="text-sm text-gray-500">Спеціалістів ще немає — салон не додав у адмінці.</div>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </section>
         )}
       </div>
