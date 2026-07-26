@@ -410,17 +410,27 @@ router.post(
     return;
   }
 
-  const { data: service } = await supabase
-    .from('services')
-    .select('duration_minutes, name_uk')
-    .eq('id', serviceId)
-    .eq('salon_id', salonId)
-    .single();
+  const [{ data: service }, { data: salonSettings }] = await Promise.all([
+    supabase
+      .from('services')
+      .select('duration_minutes, name_uk')
+      .eq('id', serviceId)
+      .eq('salon_id', salonId)
+      .single(),
+    supabase
+      .from('salons')
+      .select('address, require_booking_confirmation')
+      .eq('id', salonId)
+      .single(),
+  ]);
 
   if (!service) {
     res.status(400).json({ error: 'Service not found' });
     return;
   }
+
+  const requiresConfirmation = Boolean(salonSettings?.require_booking_confirmation);
+  const bookingStatus = requiresConfirmation ? 'pending' : 'confirmed';
 
   const client = await resolveClient(salonId, {
     clientName,
@@ -440,7 +450,7 @@ router.post(
       client_id: client?.id ?? null,
       booking_datetime: normalizedDatetime,
       duration_minutes: service.duration_minutes,
-      status: 'pending',
+      status: bookingStatus,
     })
     .select('id')
     .single();
@@ -455,7 +465,6 @@ router.post(
   }
 
   const { data: master } = await supabase.from('masters').select('name').eq('id', masterId).single();
-  const { data: salon } = await supabase.from('salons').select('address').eq('id', salonId).single();
 
   await sendBookingNotifications(
     salonId,
@@ -466,14 +475,18 @@ router.post(
     normalizedDatetime,
     service.name_uk,
     master?.name ?? '',
-    salon?.address ?? ''
+    salonSettings?.address ?? '',
+    { requiresConfirmation }
   );
 
   publishSalonBookingsChanged(salonId);
 
   res.json({
     booking_id: booking.id,
-    confirmationMessage: 'Запис створено',
+    confirmationMessage: requiresConfirmation
+      ? 'Запис створено, очікує підтвердження'
+      : 'Запис підтверджено',
+    status: bookingStatus,
   });
 });
 
@@ -923,7 +936,7 @@ router.post('/onboarding/complete', onboardingLimiter, async (req: Request, res:
 router.use('/admin', adminLimiter, authMiddleware);
 
 const SALON_SETTINGS_SELECT =
-  'id, name_uk, name_en, address, logo_url, bot_username, admin_chat_id, timezone, language, reminders_enabled, review_request_enabled, google_maps_url';
+  'id, name_uk, name_en, address, logo_url, bot_username, admin_chat_id, timezone, language, reminders_enabled, review_request_enabled, require_booking_confirmation, google_maps_url';
 
 router.get('/admin/salon', async (req: Request, res: Response) => {
   const { data } = await supabase
@@ -945,6 +958,7 @@ router.patch('/admin/salon', async (req: Request, res: Response) => {
     language,
     reminders_enabled,
     review_request_enabled,
+    require_booking_confirmation,
     google_maps_url,
   } = req.body;
 
@@ -966,6 +980,9 @@ router.patch('/admin/salon', async (req: Request, res: Response) => {
   if (typeof reminders_enabled === 'boolean') update.reminders_enabled = reminders_enabled;
   if (typeof review_request_enabled === 'boolean') {
     update.review_request_enabled = review_request_enabled;
+  }
+  if (typeof require_booking_confirmation === 'boolean') {
+    update.require_booking_confirmation = require_booking_confirmation;
   }
   if (google_maps_url !== undefined) {
     const raw = typeof google_maps_url === 'string' ? google_maps_url.trim() : '';

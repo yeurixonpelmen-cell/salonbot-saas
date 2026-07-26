@@ -11,7 +11,8 @@ export async function sendBookingNotifications(
   datetime: string,
   serviceName: string,
   masterName: string,
-  salonAddress: string
+  salonAddress: string,
+  options: { requiresConfirmation?: boolean } = {}
 ): Promise<void> {
   const bot = botManager.getBotBySalonId(salonId);
   if (!bot) {
@@ -20,15 +21,24 @@ export async function sendBookingNotifications(
   }
 
   const dt = new Date(datetime);
+  const { data: salon } = await supabase
+    .from('salons')
+    .select('admin_chat_id, require_booking_confirmation')
+    .eq('id', salonId)
+    .maybeSingle();
+
+  const requiresConfirmation =
+    options.requiresConfirmation ?? Boolean(salon?.require_booking_confirmation);
 
   if (clientTelegramId) {
     try {
       const lang = await getUserBotLanguage(salonId, clientTelegramId);
       const d = t(lang);
       const formatted = dt.toLocaleString(localeForLang(lang));
+      const footer = requiresConfirmation ? `\n\n${d.awaitingConfirm}` : `\n\n${d.bookingConfirmedShort}`;
       await bot.api.sendMessage(
         clientTelegramId,
-        `${d.bookingAccepted}\n📅 ${formatted}\n✂️ ${serviceName}\n👤 ${d.master}: ${masterName}\n📍 ${salonAddress}\n\n${d.awaitingConfirm}`,
+        `${d.bookingAccepted}\n📅 ${formatted}\n✂️ ${serviceName}\n👤 ${d.master}: ${masterName}\n📍 ${salonAddress}${footer}`,
         {
           reply_markup: {
             inline_keyboard: [[{ text: d.cancelBooking, callback_data: `cancel_${bookingId}` }]],
@@ -40,28 +50,29 @@ export async function sendBookingNotifications(
     }
   }
 
-  const { data: salon } = await supabase
-    .from('salons')
-    .select('admin_chat_id')
-    .eq('id', salonId)
-    .maybeSingle();
-
   if (!salon?.admin_chat_id) return;
 
   const source = clientTelegramId ? 'Telegram' : 'Сайт / Viber / Instagram';
   const formattedUk = dt.toLocaleString('uk-UA');
+  const statusLine = requiresConfirmation
+    ? '⏳ Потрібно підтвердити'
+    : '✅ Підтверджено автоматично';
+  const adminButtons = requiresConfirmation
+    ? [
+        [
+          { text: '✅ Підтвердити', callback_data: `confirm_${bookingId}` },
+          { text: '❌ Скасувати', callback_data: `admin_cancel_${bookingId}` },
+        ],
+      ]
+    : [[{ text: '❌ Скасувати', callback_data: `admin_cancel_${bookingId}` }]];
+
   try {
     await bot.api.sendMessage(
       salon.admin_chat_id,
-      `📅 НОВИЙ ЗАПИС (${source})\n👤 ${clientName} | 📞 ${clientPhone ?? '—'}\n✂️ ${serviceName} — ${masterName}\n🕐 ${formattedUk}`,
+      `📅 НОВИЙ ЗАПИС (${source})\n${statusLine}\n👤 ${clientName} | 📞 ${clientPhone ?? '—'}\n✂️ ${serviceName} — ${masterName}\n🕐 ${formattedUk}`,
       {
         reply_markup: {
-          inline_keyboard: [
-            [
-              { text: '✅ Підтвердити', callback_data: `confirm_${bookingId}` },
-              { text: '❌ Скасувати', callback_data: `admin_cancel_${bookingId}` },
-            ],
-          ],
+          inline_keyboard: adminButtons,
         },
       }
     );

@@ -61,6 +61,9 @@ const uk: Dict = {
   settings_auto_sub: 'Увімкніть те, що потрібно саме вашому салону',
   settings_link_title: 'Посилання для Instagram / Viber (без Telegram):',
   settings_link_hint: 'Кидайте це посилання клієнтам — відкриється той самий запис у браузері.',
+  settings_confirm: 'Підтверджувати записи вручну',
+  settings_confirm_sub:
+    'Увімкніть, якщо адміни мають натискати «Підтвердити» в Telegram. Вимкнено = клієнт одразу займає вільний слот, у групу лише сповіщення.',
   settings_reminders: 'Нагадування про запис',
   settings_reminders_sub: 'Бот напише клієнту за 24 години і за 2 години до візиту',
   settings_review: 'Прохання залишити відгук',
@@ -139,6 +142,9 @@ const ru: Dict = {
   settings_auto_sub: 'Включите то, что нужно вашему салону',
   settings_link_title: 'Ссылка для Instagram / Viber (без Telegram):',
   settings_link_hint: 'Отправляйте эту ссылку клиентам — откроется та же запись в браузере.',
+  settings_confirm: 'Подтверждать записи вручную',
+  settings_confirm_sub:
+    'Включите, если админы должны нажимать «Подтвердить» в Telegram. Выключено = клиент сразу занимает свободный слот, в группу только уведомление.',
   settings_reminders: 'Напоминания о записи',
   settings_reminders_sub: 'Бот напишет клиенту за 24 часа и за 2 часа до визита',
   settings_review: 'Просьба оставить отзыв',
@@ -214,6 +220,9 @@ const en: Dict = {
   settings_auto_sub: 'Enable what your salon needs',
   settings_link_title: 'Link for Instagram / Viber (without Telegram):',
   settings_link_hint: 'Share this link with clients — the same booking opens in the browser.',
+  settings_confirm: 'Confirm bookings manually',
+  settings_confirm_sub:
+    'Turn on if admins must tap Confirm in Telegram. Off = client books a free slot instantly; the group only gets a notification.',
   settings_reminders: 'Appointment reminders',
   settings_reminders_sub: 'The bot messages the client 24h and 2h before the visit',
   settings_review: 'Ask for a review',

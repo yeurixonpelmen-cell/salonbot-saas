@@ -243,6 +243,7 @@ export interface SalonSettings {
   language?: 'uk' | 'ru' | 'en';
   reminders_enabled?: boolean;
   review_request_enabled?: boolean;
+  require_booking_confirmation?: boolean;
   google_maps_url?: string | null;
 }
 

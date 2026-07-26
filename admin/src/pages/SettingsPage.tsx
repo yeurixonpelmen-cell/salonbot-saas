@@ -50,6 +50,7 @@ export function SettingsPage() {
         language: settings.language ?? 'uk',
         reminders_enabled: settings.reminders_enabled ?? true,
         review_request_enabled: settings.review_request_enabled ?? false,
+        require_booking_confirmation: settings.require_booking_confirmation ?? false,
         google_maps_url: settings.google_maps_url ?? null,
       });
       setSettings(saved);
@@ -165,6 +166,21 @@ export function SettingsPage() {
             </div>
             <p className="mt-2 opacity-80">{t('settings_link_hint')}</p>
           </div>
+
+          <label className="flex items-start gap-3 rounded-xl border p-3 cursor-pointer hover:bg-gray-50">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={settings.require_booking_confirmation ?? false}
+              onChange={(e) =>
+                setSettings({ ...settings, require_booking_confirmation: e.target.checked })
+              }
+            />
+            <span>
+              <span className="font-medium block">{t('settings_confirm')}</span>
+              <span className="text-sm text-gray-500 settings-muted">{t('settings_confirm_sub')}</span>
+            </span>
+          </label>
 
           <label className="flex items-start gap-3 rounded-xl border p-3 cursor-pointer hover:bg-gray-50">
             <input

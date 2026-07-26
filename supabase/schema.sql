@@ -18,6 +18,7 @@ CREATE TABLE salons (
   is_active BOOLEAN DEFAULT true,
   reminders_enabled BOOLEAN NOT NULL DEFAULT true,
   review_request_enabled BOOLEAN NOT NULL DEFAULT false,
+  require_booking_confirmation BOOLEAN NOT NULL DEFAULT false,
   google_maps_url TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );

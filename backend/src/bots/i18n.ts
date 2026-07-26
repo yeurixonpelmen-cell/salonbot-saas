@@ -27,6 +27,7 @@ type Dictionary = {
   status: string;
   bookingAccepted: string;
   awaitingConfirm: string;
+  bookingConfirmedShort: string;
   cancelBooking: string;
   master: string;
   reminderTitle: string;
@@ -58,6 +59,7 @@ const dictionaries: Record<BotLang, Dictionary> = {
     status: 'Статус',
     bookingAccepted: '✅ Запис прийнято!',
     awaitingConfirm: 'Очікує підтвердження салону.',
+    bookingConfirmedShort: 'Запис підтверджено. Чекаємо на вас!',
     cancelBooking: '❌ Скасувати запис',
     master: 'Майстер',
     reminderTitle: '⏰ Нагадування!',
@@ -93,6 +95,7 @@ const dictionaries: Record<BotLang, Dictionary> = {
     status: 'Статус',
     bookingAccepted: '✅ Запись принята!',
     awaitingConfirm: 'Ожидает подтверждения салона.',
+    bookingConfirmedShort: 'Запись подтверждена. Ждём вас!',
     cancelBooking: '❌ Отменить запись',
     master: 'Мастер',
     reminderTitle: '⏰ Напоминание!',
@@ -128,6 +131,7 @@ const dictionaries: Record<BotLang, Dictionary> = {
     status: 'Status',
     bookingAccepted: '✅ Booking received!',
     awaitingConfirm: 'Waiting for salon confirmation.',
+    bookingConfirmedShort: 'Booking confirmed. See you soon!',
     cancelBooking: '❌ Cancel booking',
     master: 'Specialist',
     reminderTitle: '⏰ Reminder!',
