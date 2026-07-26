@@ -19,7 +19,7 @@ function normalizePublicUrl(raw: string | undefined, fallback: string): string {
   return `https://${value.replace(/^\/+/, '').replace(/\/+$/, '')}`;
 }
 
-async function replyWelcome(ctx: Context, salonId: string, miniAppBase: string, lang: BotLang) {
+async function replyBookingCta(ctx: Context, salonId: string, miniAppBase: string, lang: BotLang) {
   const d = t(lang);
   const webAppUrl = `${miniAppBase}?salon=${salonId}&lang=${lang}`;
   await ctx.reply(d.welcome, {
@@ -27,7 +27,12 @@ async function replyWelcome(ctx: Context, salonId: string, miniAppBase: string, 
       inline_keyboard: [[{ text: d.openBooking, web_app: { url: webAppUrl } }]],
     },
   });
-  // Language buttons in a separate message below the booking CTA
+}
+
+async function replyWelcome(ctx: Context, salonId: string, miniAppBase: string, lang: BotLang) {
+  const d = t(lang);
+  await replyBookingCta(ctx, salonId, miniAppBase, lang);
+  // Second message: language only (no duplicate catalog / intro in chat)
   await ctx.reply(d.chooseLanguage, { reply_markup: languageKeyboard(lang) });
 }
 
@@ -115,7 +120,8 @@ export function setupBotHandlers(bot: Bot, salonId: string): void {
       await setUserBotLanguage(salonId, userId, next);
       const d = t(next);
       await ctx.answerCallbackQuery({ text: d.languageSaved });
-      await replyWelcome(ctx, salonId, miniAppBase, next);
+      // Only refresh booking CTA — don't spam another language picker
+      await replyBookingCta(ctx, salonId, miniAppBase, next);
       return;
     }
 

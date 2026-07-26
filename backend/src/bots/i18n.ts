@@ -51,8 +51,8 @@ type Dictionary = {
 const dictionaries: Record<BotLang, Dictionary> = {
   uk: {
     welcome:
-      'Ласкаво просимо! 👋\nОзнайомтесь із салоном і спеціалістами — і перейдіть до запису, коли будете готові.',
-    openBooking: '✨ Ознайомитись / Перейти до запису',
+      'Вітаємо! 👋\nНатисніть кнопку нижче — оберіть послугу, майстра і час онлайн.',
+    openBooking: '📅 Записатися',
     startFailed: 'Не вдалось відкрити запис онлайн. Спробуйте пізніше.',
     noBookings: 'У вас немає активних записів.',
     status: 'Статус',
@@ -68,7 +68,7 @@ const dictionaries: Record<BotLang, Dictionary> = {
       `Дякуємо, що були в «${salonName}»! 💛\nЯкщо все сподобалось — залиште короткий відгук на Google Maps. Це дуже допомагає.`,
     leaveReview: '⭐ Залишити відгук',
     languageSaved: 'Мову змінено.',
-    chooseLanguage: 'Оберіть мову / Choose language',
+    chooseLanguage: 'Мова / Language',
     langUk: '🇺🇦 Українська',
     langRu: '🇷🇺 Русский',
     langEn: '🇬🇧 English',
@@ -86,8 +86,8 @@ const dictionaries: Record<BotLang, Dictionary> = {
   },
   ru: {
     welcome:
-      'Добро пожаловать! 👋\nПосмотрите салон и специалистов — и запишитесь, когда будете готовы.',
-    openBooking: '✨ Открыть запись',
+      'Добро пожаловать! 👋\nНажмите кнопку ниже — выберите услугу, мастера и время онлайн.',
+    openBooking: '📅 Записаться',
     startFailed: 'Не удалось открыть онлайн-запись. Попробуйте позже.',
     noBookings: 'У вас нет активных записей.',
     status: 'Статус',
@@ -103,7 +103,7 @@ const dictionaries: Record<BotLang, Dictionary> = {
       `Спасибо, что были в «${salonName}»! 💛\nЕсли всё понравилось — оставьте короткий отзыв в Google Maps. Это очень помогает.`,
     leaveReview: '⭐ Оставить отзыв',
     languageSaved: 'Язык изменён.',
-    chooseLanguage: 'Выберите язык / Choose language',
+    chooseLanguage: 'Язык / Language',
     langUk: '🇺🇦 Українська',
     langRu: '🇷🇺 Русский',
     langEn: '🇬🇧 English',
@@ -121,8 +121,8 @@ const dictionaries: Record<BotLang, Dictionary> = {
   },
   en: {
     welcome:
-      'Welcome! 👋\nBrowse the salon and specialists — then book when you are ready.',
-    openBooking: '✨ Browse / Book now',
+      'Welcome! 👋\nTap the button below to pick a service, specialist and time.',
+    openBooking: '📅 Book now',
     startFailed: 'Could not open online booking. Please try again later.',
     noBookings: 'You have no upcoming bookings.',
     status: 'Status',
@@ -138,7 +138,7 @@ const dictionaries: Record<BotLang, Dictionary> = {
       `Thanks for visiting «${salonName}»! 💛\nIf you enjoyed it, please leave a short Google Maps review. It really helps.`,
     leaveReview: '⭐ Leave a review',
     languageSaved: 'Language updated.',
-    chooseLanguage: 'Choose language',
+    chooseLanguage: 'Language',
     langUk: '🇺🇦 Українська',
     langRu: '🇷🇺 Русский',
     langEn: '🇬🇧 English',
