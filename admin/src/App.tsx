@@ -10,6 +10,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { SelectSalonPage } from './pages/SelectSalonPage';
 import { ClientsPage } from './pages/ClientsPage';
 import { ClientDetailsPage } from './pages/ClientDetailsPage';
+import { FinancePage } from './pages/FinancePage';
 import { SuperAdminPage, SuperLoginPage } from './pages/SuperAdminPage';
 
 function ProtectedRoute() {
@@ -32,6 +33,7 @@ export default function App() {
         <Route path="/clients/:id" element={<ClientDetailsPage />} />
         <Route path="/masters" element={<MastersPage />} />
         <Route path="/services" element={<ServicesPage />} />
+        <Route path="/finance" element={<FinancePage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

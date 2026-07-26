@@ -250,6 +250,52 @@ export interface SalonSettings {
   google_maps_url?: string | null;
 }
 
+export type FinanceKind = 'income' | 'expense';
+export type FinancePaymentMethod = 'iban' | 'cash' | 'card' | 'other';
+
+export interface FinanceEntry {
+  id: string;
+  entry_date: string;
+  kind: FinanceKind;
+  amount: number;
+  currency: string;
+  payment_method: FinancePaymentMethod;
+  client_name: string | null;
+  description: string;
+  master_id: string | null;
+  master_name: string | null;
+  booking_id: string | null;
+  act_number: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface FinanceSummary {
+  count: number;
+  income_sum: number;
+  expense_sum: number;
+  net: number;
+  tax_5pct: number;
+}
+
+export interface FinanceListResponse {
+  entries: FinanceEntry[];
+  summary: FinanceSummary;
+}
+
+export interface FinanceEntryPayload {
+  entry_date: string;
+  kind: FinanceKind;
+  amount: number;
+  payment_method: FinancePaymentMethod;
+  client_name?: string | null;
+  description?: string;
+  master_id?: string | null;
+  booking_id?: string | null;
+  act_number?: string | null;
+  notes?: string | null;
+}
+
 export const GRID_SLOT_MINUTES = 30;
 export const GRID_SLOT_OPTIONS = [15, 30, 45, 60] as const;
 export type GridSlotMinutes = (typeof GRID_SLOT_OPTIONS)[number];
