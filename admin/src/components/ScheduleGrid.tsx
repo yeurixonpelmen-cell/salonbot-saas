@@ -108,6 +108,13 @@ export function ScheduleGrid({
   const timelineHeight = `calc(${timeSlots.length} * var(--schedule-slot-h))`;
   const bookingById = useMemo(() => new Map(dayBookings.map((b) => [b.id, b])), [dayBookings]);
 
+  const masterById = useMemo(() => new Map(masters.map((master) => [master.id, master])), [masters]);
+
+  function effectiveRoomId(booking: Booking): string | null {
+    if (booking.room_id) return booking.room_id;
+    return masterById.get(booking.master_id)?.default_room_id ?? null;
+  }
+
   const columns = useMemo(() => {
     if (viewMode === 'room') {
       return activeRooms.map((room) => ({
@@ -115,10 +122,15 @@ export function ScheduleGrid({
         title: room.name,
         subtitle: 'Кабінет',
         photoUrl: null as string | null,
-        filter: (booking: Booking) => booking.room_id === room.id,
+        // Prefer booking.room_id; if empty, fall back to master's default cabinet.
+        filter: (booking: Booking) => effectiveRoomId(booking) === room.id,
         onAdd: (time: string) =>
           onAddClick({
-            masterId: masters.find((m) => m.is_active)?.id ?? masters[0]?.id ?? '',
+            masterId:
+              masters.find((m) => m.is_active && m.default_room_id === room.id)?.id ??
+              masters.find((m) => m.is_active)?.id ??
+              masters[0]?.id ??
+              '',
             roomId: room.id,
             time,
           }),
@@ -139,7 +151,7 @@ export function ScheduleGrid({
         }),
       showDoctor: false,
     }));
-  }, [viewMode, activeRooms, masters, onAddClick]);
+  }, [viewMode, activeRooms, masters, onAddClick, masterById]);
 
   const displayColumns = isMobile ? [columns[mobileColumnIndex]].filter(Boolean) : columns;
   const dayStartMinute = GRID_START_HOUR * 60;

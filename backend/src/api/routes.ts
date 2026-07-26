@@ -2197,6 +2197,20 @@ router.patch('/admin/masters/:id', async (req: Request, res: Response) => {
     res.status(500).json({ error: error.message });
     return;
   }
+
+  // Attach default cabinet to existing bookings that have no room yet.
+  if (typeof patch.default_room_id === 'string' && patch.default_room_id) {
+    await supabase
+      .from('bookings')
+      .update({ room_id: patch.default_room_id })
+      .eq('salon_id', salonId)
+      .eq('master_id', req.params.id)
+      .is('room_id', null)
+      .neq('status', 'cancelled')
+      .gte('booking_datetime', new Date().toISOString());
+    publishSalonBookingsChanged(salonId);
+  }
+
   res.json({
     ...data,
     bio: data.bio ?? null,

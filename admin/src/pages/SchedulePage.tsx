@@ -437,7 +437,10 @@ function BookingDrawer({
     notes: booking.notes ?? '',
     masterId: booking.master_id,
     serviceId: booking.service_id,
-    roomId: booking.room_id ?? '',
+    roomId:
+      booking.room_id ??
+      masters.find((master) => master.id === booking.master_id)?.default_room_id ??
+      '',
     datetime: initialDatetime,
   });
   const [saving, setSaving] = useState(false);
