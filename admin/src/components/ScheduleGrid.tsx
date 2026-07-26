@@ -105,7 +105,7 @@ export function ScheduleGrid({
     () => bookings.filter((b) => zonedDateKey(b.datetime, timeZone) === date && b.status !== 'cancelled'),
     [bookings, date, timeZone]
   );
-  const timelineHeight = timeSlots.length * SLOT_HEIGHT;
+  const timelineHeight = `calc(${timeSlots.length} * var(--schedule-slot-h))`;
   const bookingById = useMemo(() => new Map(dayBookings.map((b) => [b.id, b])), [dayBookings]);
 
   const columns = useMemo(() => {
@@ -137,11 +137,23 @@ export function ScheduleGrid({
   }, [viewMode, activeRooms, masters, onAddClick]);
 
   const displayColumns = isMobile ? [columns[mobileColumnIndex]].filter(Boolean) : columns;
+  const dayStartMinute = GRID_START_HOUR * 60;
+
+  function slotIndexForTime(timeHm: string): number {
+    const exact = timeSlots.indexOf(timeHm);
+    if (exact >= 0) return exact;
+    const minutes = timeToMinutes(timeHm);
+    return Math.max(
+      0,
+      Math.min(timeSlots.length - 1, Math.round((minutes - dayStartMinute) / slotMinutes))
+    );
+  }
 
   function position(booking: Booking, columnBookings: Booking[]) {
+    const timeHm = zonedTimeHm(booking.datetime, timeZone);
     const startMinute = minutesSinceMidnight(booking.datetime, timeZone);
-    const dayStart = GRID_START_HOUR * 60;
-    const top = Math.max(0, ((startMinute - dayStart) / slotMinutes) * SLOT_HEIGHT);
+    const slotIndex = slotIndexForTime(timeHm);
+    const rowSpan = Math.max(1, Math.ceil(booking.duration_minutes / slotMinutes));
     const endMinute = startMinute + booking.duration_minutes;
     const overlaps = columnBookings
       .filter((item) => {
@@ -151,8 +163,9 @@ export function ScheduleGrid({
       .sort((a, b) => a.datetime.localeCompare(b.datetime) || a.id.localeCompare(b.id));
     const width = 100 / overlaps.length;
     return {
-      top,
-      height: Math.max(48, (booking.duration_minutes / slotMinutes) * SLOT_HEIGHT - 4),
+      // Keep in sync with CSS --schedule-slot-h so labels and cards share one row height.
+      top: `calc(${slotIndex} * var(--schedule-slot-h))`,
+      height: `calc(${rowSpan} * var(--schedule-slot-h) - 4px)`,
       left: width * overlaps.findIndex((item) => item.id === booking.id),
       width,
     };
@@ -267,7 +280,7 @@ export function ScheduleGrid({
   }
 
   return (
-    <div className="schedule-shell">
+    <div className="schedule-shell" style={{ ['--schedule-slot-h' as string]: `${SLOT_HEIGHT}px` }}>
       <div className="schedule-grid" style={{ minWidth: `${72 + displayColumns.length * 220}px` }}>
         <div className="schedule-time-column">
           <div className="schedule-corner">Час</div>
@@ -292,11 +305,20 @@ export function ScheduleGrid({
                   <small>{column.subtitle}</small>
                 </span>
               </div>
-              <div className="master-timeline" style={{ height: timelineHeight }}>
-                {timeSlots.map((time) => (
+              <div
+                className="master-timeline"
+                style={{
+                  height: timelineHeight,
+                  display: 'grid',
+                  gridTemplateRows: `repeat(${timeSlots.length}, var(--schedule-slot-h))`,
+                }}
+              >
+                {timeSlots.map((time, rowIndex) => (
                   <button
+                    type="button"
                     className={`empty-slot${dropTime === time && draggingId ? ' drop-target' : ''}`}
                     key={time}
+                    style={{ gridRow: rowIndex + 1 }}
                     onClick={() => column.onAdd(time)}
                     onDragOver={(event) => onSlotDragOver(event, columnBookings, time)}
                     onDrop={(event) => {
@@ -354,6 +376,7 @@ export function ScheduleGrid({
                         }
                       }}
                     >
+                      <div className="booking-time">{time}</div>
                       <div className="booking-card-head">
                         <span className="client-initials">{initials(booking)}</span>
                         <strong>{booking.client_name}</strong>
@@ -365,9 +388,7 @@ export function ScheduleGrid({
                       {column.showDoctor && (
                         <div className="booking-meta">{booking.master_name || 'Лікар'}</div>
                       )}
-                      <div className="booking-meta">
-                        <b>{time}</b> · {booking.service_name}
-                      </div>
+                      <div className="booking-service">{booking.service_name}</div>
                       {booking.notes && <div className="booking-note">{booking.notes}</div>}
                       {booking.client_phone && <div className="booking-phone">{booking.client_phone}</div>}
                       <button
