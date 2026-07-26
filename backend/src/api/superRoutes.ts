@@ -151,6 +151,10 @@ router.get('/salons', async (_req: Request, res: Response) => {
     ? await supabase.from('salon_staff').select('salon_id, email, is_active').in('salon_id', salonIds)
     : { data: [] as { salon_id: string; email: string; is_active: boolean }[] };
 
+  const { data: masterRows } = salonIds.length
+    ? await supabase.from('masters').select('salon_id, is_active').in('salon_id', salonIds)
+    : { data: [] as { salon_id: string; is_active: boolean }[] };
+
   const staffBySalon = new Map<string, { email: string; is_active: boolean }[]>();
   for (const row of staffRows ?? []) {
     const list = staffBySalon.get(row.salon_id) ?? [];
@@ -158,13 +162,43 @@ router.get('/salons', async (_req: Request, res: Response) => {
     staffBySalon.set(row.salon_id, list);
   }
 
+  const mastersBySalon = new Map<string, { total: number; active: number }>();
+  for (const row of masterRows ?? []) {
+    const cur = mastersBySalon.get(row.salon_id) ?? { total: 0, active: 0 };
+    cur.total += 1;
+    if (row.is_active) cur.active += 1;
+    mastersBySalon.set(row.salon_id, cur);
+  }
+
   res.json(
-    (data ?? []).map((salon) => ({
-      ...salon,
-      staff: staffBySalon.get(salon.id) ?? [],
-      staff_count: (staffBySalon.get(salon.id) ?? []).length,
-    }))
+    (data ?? []).map((salon) => {
+      const masters = mastersBySalon.get(salon.id) ?? { total: 0, active: 0 };
+      const activeMasters = masters.active;
+      const included = 5;
+      const monthlyPrice = activeMasters <= included ? 850 : 850 + (activeMasters - included) * 100;
+      return {
+        ...salon,
+        staff: staffBySalon.get(salon.id) ?? [],
+        staff_count: (staffBySalon.get(salon.id) ?? []).length,
+        masters_total: masters.total,
+        masters_active: activeMasters,
+        monthly_price_uah: monthlyPrice,
+      };
+    })
   );
+});
+
+router.get('/salons/:id/masters', async (req: Request, res: Response) => {
+  const { data, error } = await supabase
+    .from('masters')
+    .select('id, name, position, is_active, created_at')
+    .eq('salon_id', req.params.id)
+    .order('name');
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+  res.json(data ?? []);
 });
 
 router.post('/salons', async (req: Request, res: Response) => {

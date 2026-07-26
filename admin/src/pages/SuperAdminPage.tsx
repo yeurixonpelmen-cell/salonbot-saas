@@ -10,6 +10,9 @@ type SalonRow = {
   created_at: string;
   staff_count: number;
   staff: { email: string; is_active: boolean }[];
+  masters_total?: number;
+  masters_active?: number;
+  monthly_price_uah?: number;
 };
 
 type StaffRow = {
@@ -18,6 +21,14 @@ type StaffRow = {
   full_name: string | null;
   role: string;
   is_active: boolean;
+};
+
+type MasterRow = {
+  id: string;
+  name: string;
+  position: string | null;
+  is_active: boolean;
+  created_at: string;
 };
 
 type ActivationCodeRow = {
@@ -95,6 +106,7 @@ export function SuperAdminPage() {
   const [loading, setLoading] = useState(true);
   const [selectedSalonId, setSelectedSalonId] = useState<string | null>(null);
   const [staff, setStaff] = useState<StaffRow[]>([]);
+  const [masters, setMasters] = useState<MasterRow[]>([]);
   const [createdPasswords, setCreatedPasswords] = useState<
     { email: string; temporaryPassword: string; emailSent?: boolean; emailError?: string }[]
   >([]);
@@ -238,13 +250,18 @@ export function SuperAdminPage() {
     }
   }
 
-  async function openStaff(salonId: string) {
+  async function openSalonPeople(salonId: string) {
     setSelectedSalonId(salonId);
     setError('');
     try {
-      setStaff(await superApi<StaffRow[]>(`/api/super/salons/${salonId}/staff`));
+      const [staffRows, masterRows] = await Promise.all([
+        superApi<StaffRow[]>(`/api/super/salons/${salonId}/staff`),
+        superApi<MasterRow[]>(`/api/super/salons/${salonId}/masters`),
+      ]);
+      setStaff(staffRows);
+      setMasters(masterRows);
     } catch (err) {
-      setError((err as { error?: string }).error ?? 'Не вдалось завантажити співробітників');
+      setError((err as { error?: string }).error ?? 'Не вдалось завантажити людей салону');
     }
   }
 
@@ -270,7 +287,7 @@ export function SuperAdminPage() {
         },
       ]);
       setNewStaffEmail('');
-      await openStaff(selectedSalonId);
+      await openSalonPeople(selectedSalonId);
       await loadSalons();
       setMessage(
         created.emailSent
@@ -327,6 +344,7 @@ export function SuperAdminPage() {
       if (selectedSalonId === salon.id) {
         setSelectedSalonId(null);
         setStaff([]);
+        setMasters([]);
       }
       setMessage(`Салон «${salon.name_uk}» видалено.`);
       await loadSalons();
@@ -496,19 +514,24 @@ export function SuperAdminPage() {
 
         <section className="bg-white border rounded-2xl p-5 space-y-3">
           <h2 className="text-xl font-bold">Салони {loading ? '…' : `(${salons.length})`}</h2>
+          <p className="text-sm text-gray-500">
+            Тариф: 850 грн до 5 активних спеціалістів у розкладі, далі +100 грн за кожного.
+            Співробітники (email) на ціну не впливають.
+          </p>
           <div className="grid gap-2">
             {salons.map((salon) => (
               <div key={salon.id} className="border rounded-xl p-3 flex flex-wrap items-center gap-3 justify-between">
                 <div>
                   <div className="font-semibold">{salon.name_uk}</div>
                   <div className="text-sm text-gray-500">
-                    {salon.bot_username ? `@${salon.bot_username}` : 'без username'} · співробітників: {salon.staff_count} ·{' '}
-                    {salon.is_active ? 'активний' : 'вимкнений'}
+                    {salon.bot_username ? `@${salon.bot_username}` : 'без username'} · логінів: {salon.staff_count} ·{' '}
+                    спеціалістів: {salon.masters_active ?? 0}/{salon.masters_total ?? 0} активних ·{' '}
+                    ~{salon.monthly_price_uah ?? 850} грн/міс · {salon.is_active ? 'салон активний' : 'вимкнений'}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" className="px-3 py-2 rounded-lg border" onClick={() => void openStaff(salon.id)}>
-                    Співробітники
+                  <button type="button" className="px-3 py-2 rounded-lg border" onClick={() => void openSalonPeople(salon.id)}>
+                    Люди / тариф
                   </button>
                   <button
                     type="button"
@@ -527,32 +550,81 @@ export function SuperAdminPage() {
 
         {selectedSalonId && (
           <section className="bg-white border rounded-2xl p-5 space-y-4">
-            <h2 className="text-xl font-bold">Співробітники салону</h2>
-            <form onSubmit={addStaff} className="flex flex-wrap gap-2">
-              <input
-                className="border rounded-lg p-3 flex-1 min-w-[220px]"
-                placeholder="email@clinic.com"
-                value={newStaffEmail}
-                onChange={(e) => setNewStaffEmail(e.target.value)}
-              />
-              <button type="submit" disabled={saving} className="px-4 py-3 rounded-lg bg-blue-600 text-white">
-                Додати
-              </button>
-            </form>
-            <div className="grid gap-2">
-              {staff.map((person) => (
-                <div key={person.id} className="border rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <div className="font-medium">{person.email}</div>
-                    <div className="text-sm text-gray-500">
-                      {person.role} · {person.is_active ? 'активний' : 'вимкнений'}
+            <h2 className="text-xl font-bold">
+              Люди салону
+              {salons.find((s) => s.id === selectedSalonId)
+                ? ` — ${salons.find((s) => s.id === selectedSalonId)!.name_uk}`
+                : ''}
+            </h2>
+            <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-sm text-emerald-900">
+              Активних спеціалістів: <b>{masters.filter((m) => m.is_active).length}</b>
+              {' · '}
+              орієнтовний тариф:{' '}
+              <b>
+                {(() => {
+                  const active = masters.filter((m) => m.is_active).length;
+                  return active <= 5 ? 850 : 850 + (active - 5) * 100;
+                })()}{' '}
+                грн/міс
+              </b>
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="font-semibold">Співробітники (вхід в адмінку)</h3>
+              <form onSubmit={addStaff} className="flex flex-wrap gap-2">
+                <input
+                  className="border rounded-lg p-3 flex-1 min-w-[220px]"
+                  placeholder="email@clinic.com"
+                  value={newStaffEmail}
+                  onChange={(e) => setNewStaffEmail(e.target.value)}
+                />
+                <button type="submit" disabled={saving} className="px-4 py-3 rounded-lg bg-blue-600 text-white">
+                  Додати
+                </button>
+              </form>
+              <div className="grid gap-2">
+                {staff.map((person) => (
+                  <div key={person.id} className="border rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="font-medium">{person.email}</div>
+                      <div className="text-sm text-gray-500">
+                        {person.role} · {person.is_active ? 'логін активний' : 'логін вимкнений'}
+                      </div>
                     </div>
+                    <button type="button" className="px-3 py-2 rounded-lg border text-sm" onClick={() => void resetPassword(person.id)}>
+                      Новий пароль
+                    </button>
                   </div>
-                  <button type="button" className="px-3 py-2 rounded-lg border text-sm" onClick={() => void resetPassword(person.id)}>
-                    Новий пароль
-                  </button>
-                </div>
-              ))}
+                ))}
+                {!staff.length && <div className="text-sm text-gray-500">Поки немає логінів.</div>}
+              </div>
+            </div>
+
+            <div className="space-y-2 border-t pt-4">
+              <h3 className="font-semibold">Спеціалісти (хто в розкладі / записі)</h3>
+              <p className="text-sm text-gray-500">
+                «Приймає записи» = активний у системі. Назва посади (майстер/асистент) на тариф не впливає.
+              </p>
+              <div className="grid gap-2">
+                {masters.map((master) => (
+                  <div key={master.id} className="border rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="font-medium">{master.name}</div>
+                      <div className="text-sm text-gray-500">{master.position || 'без посади'}</div>
+                    </div>
+                    <span
+                      className={`text-sm font-medium px-3 py-1 rounded-full ${
+                        master.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {master.is_active ? 'Приймає записи' : 'Не приймає'}
+                    </span>
+                  </div>
+                ))}
+                {!masters.length && (
+                  <div className="text-sm text-gray-500">Спеціалістів ще немає — салон не додав у адмінці.</div>
+                )}
+              </div>
             </div>
           </section>
         )}
