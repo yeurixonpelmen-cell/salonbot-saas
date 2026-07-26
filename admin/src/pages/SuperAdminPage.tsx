@@ -331,7 +331,7 @@ export function SuperAdminPage() {
           <div>
             <h1 className="text-3xl font-bold">Super Admin</h1>
             <p className="text-gray-500 text-sm mt-1">
-              Коди активації (1 код = 1 салон) або ручне створення салону
+              Ти даєш лише код. Салон сам заповнює назву, адресу, токен бота і свій email.
             </p>
           </div>
           <div className="flex gap-2">
@@ -373,16 +373,18 @@ export function SuperAdminPage() {
         <section className="bg-white border rounded-2xl p-5 space-y-4">
           <h2 className="text-xl font-bold">Коди активації</h2>
           <p className="text-sm text-gray-500">
-            Клієнт заходить на <code>/onboarding</code>, вводить код + email + пароль і сам налаштовує 1 салон.
+            1. Згенеруй код → 2. Скинь клієнту в Telegram/email → 3. Клієнт на{' '}
+            <code>/onboarding</code> сам вводить код, свій email, пароль і налаштовує салон.
+            Токен бота й адресу ти не бачиш і не вводиш.
           </p>
           <form onSubmit={createActivationCodes} className="grid gap-3 md:grid-cols-3">
             <label className="block md:col-span-2">
-              <span className="text-sm text-gray-600">Нотатка (салон / клієнт)</span>
+              <span className="text-sm text-gray-600">Кому код (email / ім’я — лише для тебе)</span>
               <input
                 className="w-full border rounded-lg p-3 mt-1"
                 value={codeNote}
                 onChange={(e) => setCodeNote(e.target.value)}
-                placeholder="Beauty Room, Марина"
+                placeholder="marina@clinic.com · Beauty Room"
               />
             </label>
             <label className="block">
@@ -406,6 +408,9 @@ export function SuperAdminPage() {
               {lastCreatedCodes.map((code) => (
                 <div key={code} className="font-mono text-base">{code}</div>
               ))}
+              <div className="text-gray-600 pt-1">
+                Посилання: <code>{window.location.origin}/onboarding</code>
+              </div>
             </div>
           )}
           <div className="grid gap-2 max-h-72 overflow-auto">
@@ -437,15 +442,20 @@ export function SuperAdminPage() {
           </div>
         </section>
 
-        <section className="bg-white border rounded-2xl p-5 space-y-4">
-          <h2 className="text-xl font-bold">Новий салон (вручну)</h2>
+        <details className="bg-white border rounded-2xl p-5">
+          <summary className="cursor-pointer font-semibold text-gray-700">
+            Розширене: створити салон вручну (зазвичай не треба)
+          </summary>
+          <p className="text-sm text-gray-500 mt-2 mb-4">
+            Лише якщо сам налаштовуєш салон. Для клієнтів використовуй коди вище — токен і адресу вони вводять самі.
+          </p>
           <form onSubmit={createSalon} className="grid gap-3 md:grid-cols-2">
             <label className="block md:col-span-2">
               <span className="text-sm text-gray-600">Назва *</span>
               <input className="w-full border rounded-lg p-3 mt-1" required value={form.name_uk} onChange={(e) => setForm({ ...form, name_uk: e.target.value })} />
             </label>
             <label className="block md:col-span-2">
-              <span className="text-sm text-gray-600">Адреса</span>
+              <span className="text-sm text-gray-600">Адреса (опційно)</span>
               <input className="w-full border rounded-lg p-3 mt-1" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
             </label>
             <label className="block md:col-span-2">
@@ -453,15 +463,15 @@ export function SuperAdminPage() {
               <input className="w-full border rounded-lg p-3 mt-1" required value={form.botToken} onChange={(e) => setForm({ ...form, botToken: e.target.value })} />
             </label>
             <label className="block">
-              <span className="text-sm text-gray-600">Username бота</span>
+              <span className="text-sm text-gray-600">Username бота (опційно)</span>
               <input className="w-full border rounded-lg p-3 mt-1" placeholder="@SalonBot" value={form.botUsername} onChange={(e) => setForm({ ...form, botUsername: e.target.value })} />
             </label>
             <label className="block">
-              <span className="text-sm text-gray-600">Admin chat ID</span>
+              <span className="text-sm text-gray-600">Admin chat ID (опційно)</span>
               <input className="w-full border rounded-lg p-3 mt-1" value={form.adminChatId} onChange={(e) => setForm({ ...form, adminChatId: e.target.value })} />
             </label>
             <label className="block md:col-span-2">
-              <span className="text-sm text-gray-600">Emails співробітників (по одному в рядку або через кому)</span>
+              <span className="text-sm text-gray-600">Emails співробітників (якщо створюєш салон сам)</span>
               <textarea
                 className="w-full border rounded-lg p-3 mt-1"
                 rows={4}
@@ -474,7 +484,7 @@ export function SuperAdminPage() {
               {saving ? 'Створення…' : 'Створити салон + доступи'}
             </button>
           </form>
-        </section>
+        </details>
 
         <section className="bg-white border rounded-2xl p-5 space-y-3">
           <h2 className="text-xl font-bold">Салони {loading ? '…' : `(${salons.length})`}</h2>
