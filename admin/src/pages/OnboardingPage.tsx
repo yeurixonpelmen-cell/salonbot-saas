@@ -1,6 +1,6 @@
 import { ChangeEvent, FormEvent, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { api, setToken } from '../api';
+import { Link, useNavigate } from 'react-router-dom';
+import { api, clearToken, setToken } from '../api';
 import { useAuth } from '../context/AuthContext';
 
 type Step = 0 | 1 | 2 | 3 | 4;
@@ -9,7 +9,8 @@ const ONBOARDING_TOKEN_KEY = 'onboarding_token';
 const ONBOARDING_EMAIL_KEY = 'onboarding_email';
 
 export function OnboardingPage() {
-  const { refreshAuth } = useAuth();
+  const { refreshAuth, logout } = useAuth();
+  const navigate = useNavigate();
   const [step, setStep] = useState<Step>(0);
   const [onboardingToken, setOnboardingToken] = useState(() => sessionStorage.getItem(ONBOARDING_TOKEN_KEY) ?? '');
   const [ownerEmail, setOwnerEmail] = useState(() => sessionStorage.getItem(ONBOARDING_EMAIL_KEY) ?? '');
@@ -185,12 +186,12 @@ export function OnboardingPage() {
             <form onSubmit={claimCode} className="space-y-4">
               <h2 className="text-xl font-semibold">Крок 0 — Код і email</h2>
               <p className="text-gray-500 text-sm">
-                Один код = один салон. Після активації входите в адмінку цим email і паролем.
+                Один код = один салон. Пароль потрібен, щоб потім заходити в адмінку (email + цей пароль).
               </p>
               <Input label="Код активації *" value={activationCode} onChange={setActivationCode} required />
               <Input label="Email власника *" value={email} onChange={setEmail} type="email" required />
               <Input
-                label="Пароль (мін. 8 символів) *"
+                label="Пароль для входу в адмінку (мін. 8 символів) *"
                 value={password}
                 onChange={setPassword}
                 type="password"
@@ -204,7 +205,18 @@ export function OnboardingPage() {
                 {loading ? 'Перевірка…' : 'Продовжити'}
               </button>
               <p className="text-sm text-center text-gray-500">
-                Уже є акаунт? <Link to="/login" className="text-blue-600">Увійти</Link>
+                Уже є акаунт?{' '}
+                <button
+                  type="button"
+                  className="text-blue-600 underline"
+                  onClick={() => {
+                    logout();
+                    clearToken();
+                    navigate('/login', { replace: true });
+                  }}
+                >
+                  Увійти
+                </button>
               </p>
             </form>
           )}
