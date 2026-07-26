@@ -23,15 +23,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const result = await api.post<{
       token?: string;
       needsOnboarding?: boolean;
+      needsEmailOnboarding?: boolean;
       needsSalonPick?: boolean;
       ownerTelegramId?: number;
       selectionToken?: string;
       salons?: { id: string; name_uk: string }[];
+      error?: string;
     }>('/api/auth/telegram', telegramData);
 
-    if (result.needsOnboarding) {
-      sessionStorage.setItem('onboarding_owner_id', String(result.ownerTelegramId));
-      sessionStorage.setItem('onboarding_first_name', telegramData.first_name ?? '');
+    if (result.needsEmailOnboarding || result.needsOnboarding) {
       window.location.href = '/onboarding';
       return;
     }

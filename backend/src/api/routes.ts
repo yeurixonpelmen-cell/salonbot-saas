@@ -5,7 +5,13 @@ import { supabase } from '../db/client';
 import { authMiddleware } from '../middleware/auth';
 import { optionalTelegramInitDataMiddleware } from '../middleware/telegramInitData';
 import { validateTelegramLoginWidget, isBookingConflictError } from '../utils/telegram';
-import { signJwt, signSalonSelectionJwt, verifySalonSelectionJwt } from '../utils/jwt';
+import {
+  signJwt,
+  signOnboardingJwt,
+  signSalonSelectionJwt,
+  verifyOnboardingJwt,
+  verifySalonSelectionJwt,
+} from '../utils/jwt';
 import { encryptBotToken } from '../utils/salon';
 import {
   hasBookingConflict,
@@ -27,7 +33,7 @@ import {
   normalizeBookingDatetime,
   resolveSalonTimezone,
 } from '../utils/datetime';
-import { normalizeEmail, verifyPassword } from '../utils/password';
+import { hashPassword, normalizeEmail, verifyPassword } from '../utils/password';
 import { publishSalonBookingsChanged, subscribeSalon } from '../realtime/salonEvents';
 import superRoutes from './superRoutes';
 
@@ -494,7 +500,11 @@ router.post('/auth/telegram', async (req: Request, res: Response) => {
     .eq('is_active', true);
 
   if (!salons?.length) {
-    res.json({ needsOnboarding: true, ownerTelegramId, firstName: data.first_name });
+    // Setup is email+code only; do not open Telegram onboarding.
+    res.json({
+      needsEmailOnboarding: true,
+      error: 'Немає салону для цього Telegram. Підключення лише за кодом активації через email.',
+    });
     return;
   }
 
@@ -596,7 +606,94 @@ router.post('/auth/select-salon', async (req: Request, res: Response) => {
   res.json({ token, salon });
 });
 
-// ─── Onboarding ───────────────────────────────────────────
+// ─── Onboarding (email + activation code only, 1 salon) ───
+
+function normalizeActivationCode(raw: unknown): string {
+  return String(raw ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
+}
+
+router.post('/onboarding/claim', onboardingLimiter, async (req: Request, res: Response) => {
+  const email = normalizeEmail(String(req.body?.email ?? ''));
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  const code = normalizeActivationCode(req.body?.code);
+
+  if (!email || !email.includes('@')) {
+    res.status(400).json({ error: 'Вкажіть коректний email' });
+    return;
+  }
+  if (password.length < 8) {
+    res.status(400).json({ error: 'Пароль має бути щонайменше 8 символів' });
+    return;
+  }
+  if (!code) {
+    res.status(400).json({ error: 'Вкажіть код активації' });
+    return;
+  }
+
+  const { data: existingStaff } = await supabase
+    .from('salon_staff')
+    .select('id')
+    .eq('email', email)
+    .maybeSingle();
+  if (existingStaff) {
+    res.status(409).json({ error: 'Цей email уже прив’язаний до салону. Увійдіть через /login' });
+    return;
+  }
+
+  const { data: codeRow, error: codeError } = await supabase
+    .from('activation_codes')
+    .select('id, code, status, reserved_email, password_hash')
+    .ilike('code', code)
+    .maybeSingle();
+
+  if (codeError || !codeRow) {
+    res.status(404).json({ error: 'Код активації не знайдено' });
+    return;
+  }
+  if (codeRow.status === 'redeemed' || codeRow.status === 'revoked') {
+    res.status(410).json({ error: 'Цей код уже використано або скасовано' });
+    return;
+  }
+
+  if (codeRow.status === 'reserved') {
+    if (normalizeEmail(codeRow.reserved_email ?? '') !== email) {
+      res.status(409).json({ error: 'Код уже зарезервовано іншим email' });
+      return;
+    }
+    if (!codeRow.password_hash || !verifyPassword(password, codeRow.password_hash)) {
+      res.status(401).json({ error: 'Невірний пароль для цього коду' });
+      return;
+    }
+    const onboardingToken = signOnboardingJwt(codeRow.id, email);
+    res.json({ onboardingToken, email, code: codeRow.code });
+    return;
+  }
+
+  const password_hash = hashPassword(password);
+  const { data: reserved, error: reserveError } = await supabase
+    .from('activation_codes')
+    .update({
+      status: 'reserved',
+      reserved_email: email,
+      password_hash,
+      reserved_at: new Date().toISOString(),
+    })
+    .eq('id', codeRow.id)
+    .eq('status', 'unused')
+    .select('id, code')
+    .maybeSingle();
+
+  if (reserveError || !reserved) {
+    res.status(409).json({ error: 'Не вдалось зарезервувати код. Спробуйте ще раз' });
+    return;
+  }
+
+  const onboardingToken = signOnboardingJwt(reserved.id, email);
+  res.json({ onboardingToken, email, code: reserved.code });
+});
 
 router.post('/onboarding/verify-bot', onboardingLimiter, async (req: Request, res: Response) => {
   const { token } = req.body;
@@ -661,8 +758,7 @@ router.post('/onboarding/logo', onboardingLimiter, upload.single('logo'), async 
 
 router.post('/onboarding/complete', onboardingLimiter, async (req: Request, res: Response) => {
   const {
-    ownerTelegramId,
-    ownerAuthData,
+    onboardingToken,
     nameUk,
     nameEn,
     address,
@@ -672,19 +768,47 @@ router.post('/onboarding/complete', onboardingLimiter, async (req: Request, res:
     adminChatId,
   } = req.body;
 
-  if (!ownerTelegramId || !nameUk || !rawBotToken || !botUsername) {
+  if (!onboardingToken || !nameUk || !rawBotToken || !botUsername) {
     res.status(400).json({ error: 'Missing required onboarding fields' });
     return;
   }
 
-  const loginBotToken = process.env.ADMIN_LOGIN_BOT_TOKEN;
-  if (!loginBotToken || !ownerAuthData || !validateTelegramLoginWidget(ownerAuthData, loginBotToken)) {
-    res.status(401).json({ error: 'Invalid owner Telegram login data' });
+  const session = verifyOnboardingJwt(String(onboardingToken));
+  if (!session) {
+    res.status(401).json({ error: 'Сесія онбордингу закінчилась. Почніть знову з коду та email' });
     return;
   }
 
-  if (Number(ownerAuthData.id) !== Number(ownerTelegramId)) {
-    res.status(401).json({ error: 'Owner Telegram ID mismatch' });
+  const { data: codeRow, error: codeError } = await supabase
+    .from('activation_codes')
+    .select('id, status, reserved_email, password_hash')
+    .eq('id', session.code_id)
+    .maybeSingle();
+
+  if (codeError || !codeRow) {
+    res.status(404).json({ error: 'Код активації не знайдено' });
+    return;
+  }
+  if (codeRow.status === 'redeemed' || codeRow.status === 'revoked') {
+    res.status(410).json({ error: 'Цей код уже використано або скасовано' });
+    return;
+  }
+  if (codeRow.status !== 'reserved' || normalizeEmail(codeRow.reserved_email ?? '') !== session.email) {
+    res.status(403).json({ error: 'Код не зарезервовано на цей email' });
+    return;
+  }
+  if (!codeRow.password_hash) {
+    res.status(400).json({ error: 'Сесія онбордингу пошкоджена. Почніть знову' });
+    return;
+  }
+
+  const { data: existingStaff } = await supabase
+    .from('salon_staff')
+    .select('id')
+    .eq('email', session.email)
+    .maybeSingle();
+  if (existingStaff) {
+    res.status(409).json({ error: 'Цей email уже прив’язаний до салону' });
     return;
   }
 
@@ -716,14 +840,48 @@ router.post('/onboarding/complete', onboardingLimiter, async (req: Request, res:
       bot_token: encryptedToken,
       bot_username: botUsername,
       admin_chat_id: adminChatId ?? null,
-      owner_telegram_id: ownerTelegramId,
+      owner_telegram_id: 0,
     })
-    .select('id')
+    .select('id, name_uk')
     .single();
 
   if (error || !salon) {
     res.status(500).json({ error: error?.message ?? 'Failed to create salon' });
     return;
+  }
+
+  const { data: staff, error: staffError } = await supabase
+    .from('salon_staff')
+    .insert({
+      salon_id: salon.id,
+      email: session.email,
+      password_hash: codeRow.password_hash,
+      full_name: null,
+      role: 'owner',
+      is_active: true,
+    })
+    .select('id, email')
+    .single();
+
+  if (staffError || !staff) {
+    await supabase.from('salons').delete().eq('id', salon.id);
+    res.status(500).json({ error: staffError?.message ?? 'Failed to create owner account' });
+    return;
+  }
+
+  const { error: redeemError } = await supabase
+    .from('activation_codes')
+    .update({
+      status: 'redeemed',
+      redeemed_at: new Date().toISOString(),
+      salon_id: salon.id,
+      password_hash: null,
+    })
+    .eq('id', codeRow.id)
+    .eq('status', 'reserved');
+
+  if (redeemError) {
+    console.error('Failed to redeem activation code', redeemError);
   }
 
   if (logoUrl) {
@@ -745,10 +903,11 @@ router.post('/onboarding/complete', onboardingLimiter, async (req: Request, res:
 
   const token = signJwt({
     salon_id: salon.id,
-    owner_telegram_id: ownerTelegramId,
-    role: 'telegram_owner',
+    staff_id: staff.id,
+    email: staff.email,
+    role: 'staff',
   });
-  res.json({ salonId: salon.id, token, botUsername });
+  res.json({ salonId: salon.id, token, botUsername, email: staff.email });
 });
 
 // ─── Admin (protected) ────────────────────────────────────

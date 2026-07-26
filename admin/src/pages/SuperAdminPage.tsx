@@ -20,6 +20,17 @@ type StaffRow = {
   is_active: boolean;
 };
 
+type ActivationCodeRow = {
+  id: string;
+  code: string;
+  status: 'unused' | 'reserved' | 'redeemed' | 'revoked';
+  reserved_email: string | null;
+  redeemed_at: string | null;
+  salon_id: string | null;
+  note: string | null;
+  created_at: string;
+};
+
 export function SuperLoginPage() {
   const navigate = useNavigate();
   const [password, setPassword] = useState('');
@@ -97,12 +108,21 @@ export function SuperAdminPage() {
   });
   const [newStaffEmail, setNewStaffEmail] = useState('');
   const [saving, setSaving] = useState(false);
+  const [activationCodes, setActivationCodes] = useState<ActivationCodeRow[]>([]);
+  const [codeNote, setCodeNote] = useState('');
+  const [codeCount, setCodeCount] = useState(1);
+  const [lastCreatedCodes, setLastCreatedCodes] = useState<string[]>([]);
 
   async function loadSalons() {
     setLoading(true);
     setError('');
     try {
-      setSalons(await superApi<SalonRow[]>('/api/super/salons'));
+      const [salonRows, codeRows] = await Promise.all([
+        superApi<SalonRow[]>('/api/super/salons'),
+        superApi<ActivationCodeRow[]>('/api/super/activation-codes'),
+      ]);
+      setSalons(salonRows);
+      setActivationCodes(codeRows);
     } catch (err) {
       setError((err as { error?: string }).error ?? 'Не вдалось завантажити салони');
       if ((err as { error?: string }).error === 'Unauthorized' || (err as { error?: string }).error === 'Super admin only') {
@@ -121,6 +141,46 @@ export function SuperAdminPage() {
     }
     void loadSalons();
   }, [navigate]);
+
+  async function createActivationCodes(event: FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await superApi<{ codes: ActivationCodeRow[] }>('/api/super/activation-codes', {
+        method: 'POST',
+        body: JSON.stringify({ note: codeNote || null, count: codeCount }),
+      });
+      const codes = result.codes.map((row) => row.code);
+      setLastCreatedCodes(codes);
+      setMessage(`Створено кодів: ${codes.length}. Клієнт активує на /onboarding`);
+      setCodeNote('');
+      setCodeCount(1);
+      await loadSalons();
+    } catch (err) {
+      setError((err as { error?: string }).error ?? 'Не вдалось створити коди');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function revokeCode(id: string) {
+    setSaving(true);
+    setError('');
+    try {
+      await superApi(`/api/super/activation-codes/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ revoke: true }),
+      });
+      setMessage('Код скасовано');
+      await loadSalons();
+    } catch (err) {
+      setError((err as { error?: string }).error ?? 'Не вдалось скасувати код');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function createSalon(event: FormEvent) {
     event.preventDefault();
@@ -270,7 +330,9 @@ export function SuperAdminPage() {
         <header className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold">Super Admin</h1>
-            <p className="text-gray-500 text-sm mt-1">Створення салонів і доступів по email (~5 хв на клініку)</p>
+            <p className="text-gray-500 text-sm mt-1">
+              Коди активації (1 код = 1 салон) або ручне створення салону
+            </p>
           </div>
           <div className="flex gap-2">
             <Link to="/login" className="px-3 py-2 rounded-lg border bg-white text-sm">Адмінка салону</Link>
@@ -309,7 +371,74 @@ export function SuperAdminPage() {
         )}
 
         <section className="bg-white border rounded-2xl p-5 space-y-4">
-          <h2 className="text-xl font-bold">Новий салон</h2>
+          <h2 className="text-xl font-bold">Коди активації</h2>
+          <p className="text-sm text-gray-500">
+            Клієнт заходить на <code>/onboarding</code>, вводить код + email + пароль і сам налаштовує 1 салон.
+          </p>
+          <form onSubmit={createActivationCodes} className="grid gap-3 md:grid-cols-3">
+            <label className="block md:col-span-2">
+              <span className="text-sm text-gray-600">Нотатка (салон / клієнт)</span>
+              <input
+                className="w-full border rounded-lg p-3 mt-1"
+                value={codeNote}
+                onChange={(e) => setCodeNote(e.target.value)}
+                placeholder="Beauty Room, Марина"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm text-gray-600">Скільки кодів</span>
+              <input
+                type="number"
+                min={1}
+                max={20}
+                className="w-full border rounded-lg p-3 mt-1"
+                value={codeCount}
+                onChange={(e) => setCodeCount(Number(e.target.value) || 1)}
+              />
+            </label>
+            <button type="submit" disabled={saving} className="md:col-span-3 py-3 rounded-lg bg-emerald-600 text-white font-medium">
+              {saving ? 'Створення…' : 'Згенерувати код(и)'}
+            </button>
+          </form>
+          {!!lastCreatedCodes.length && (
+            <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm space-y-1">
+              <div className="font-semibold">Нові коди (скинь клієнту):</div>
+              {lastCreatedCodes.map((code) => (
+                <div key={code} className="font-mono text-base">{code}</div>
+              ))}
+            </div>
+          )}
+          <div className="grid gap-2 max-h-72 overflow-auto">
+            {activationCodes.map((row) => (
+              <div key={row.id} className="border rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="font-mono font-semibold">{row.code}</div>
+                  <div className="text-sm text-gray-500">
+                    {row.status}
+                    {row.reserved_email ? ` · ${row.reserved_email}` : ''}
+                    {row.note ? ` · ${row.note}` : ''}
+                  </div>
+                </div>
+                {(row.status === 'unused' || row.status === 'reserved') && (
+                  <button
+                    type="button"
+                    disabled={saving}
+                    className="px-3 py-2 rounded-lg border text-sm"
+                    onClick={() => void revokeCode(row.id)}
+                  >
+                    Скасувати
+                  </button>
+                )}
+              </div>
+            ))}
+            {!activationCodes.length && !loading && (
+              <div className="text-gray-500 text-sm">Кодів ще немає — згенеруй перший вище.</div>
+            )}
+          </div>
+        </section>
+
+        <section className="bg-white border rounded-2xl p-5 space-y-4">
+          <h2 className="text-xl font-bold">Новий салон (вручну)</h2>
           <form onSubmit={createSalon} className="grid gap-3 md:grid-cols-2">
             <label className="block md:col-span-2">
               <span className="text-sm text-gray-600">Назва *</span>

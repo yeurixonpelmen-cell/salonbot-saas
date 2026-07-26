@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { DragEvent, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Booking,
   Master,
@@ -24,6 +24,12 @@ export type ScheduleAddDraft = {
   time: string;
 };
 
+export type ScheduleRescheduleTarget = {
+  time: string;
+  masterId?: string;
+  roomId?: string | null;
+};
+
 interface Props {
   bookings: Booking[];
   masters: Master[];
@@ -31,16 +37,35 @@ interface Props {
   viewMode?: ScheduleViewMode;
   date: string;
   timeZone?: string;
+  slotMinutes?: number;
   mobileColumnIndex?: number;
   onBookingClick: (b: Booking) => void;
   onAddClick: (draft: ScheduleAddDraft) => void;
   onNoteSave: (booking: Booking, notes: string) => Promise<void>;
+  onReschedule?: (booking: Booking, target: ScheduleRescheduleTarget) => Promise<void>;
 }
 
 const SLOT_HEIGHT = 56;
 
 function initials(booking: Booking) {
-  return booking.client_initials || booking.client_name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
+  return (
+    booking.client_initials ||
+    booking.client_name
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join('')
+      .toUpperCase()
+  );
+}
+
+function intervalsOverlap(aStart: number, aDur: number, bStart: number, bDur: number): boolean {
+  return aStart < bStart + bDur && bStart < aStart + aDur;
+}
+
+function timeToMinutes(time: string): number {
+  const [h, m] = time.split(':').map(Number);
+  return h * 60 + m;
 }
 
 export function ScheduleGrid({
@@ -50,16 +75,23 @@ export function ScheduleGrid({
   viewMode = 'master',
   date,
   timeZone = DEFAULT_SALON_TIMEZONE,
+  slotMinutes = GRID_SLOT_MINUTES,
   mobileColumnIndex = 0,
   onBookingClick,
   onAddClick,
   onNoteSave,
+  onReschedule,
 }: Props) {
-  const timeSlots = getGridTimeSlots();
+  const timeSlots = useMemo(() => getGridTimeSlots(slotMinutes), [slotMinutes]);
   const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 767px)').matches);
   const [noteBooking, setNoteBooking] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [savingNote, setSavingNote] = useState(false);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [conflictIds, setConflictIds] = useState<string[]>([]);
+  const [dropTime, setDropTime] = useState<string | null>(null);
+  const [rescheduling, setRescheduling] = useState(false);
+  const suppressClickRef = useRef(false);
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 767px)');
@@ -70,10 +102,11 @@ export function ScheduleGrid({
 
   const activeRooms = useMemo(() => rooms.filter((room) => room.is_active), [rooms]);
   const dayBookings = useMemo(
-    () => bookings.filter((b) => zonedDateKey(b.datetime, timeZone) === date),
+    () => bookings.filter((b) => zonedDateKey(b.datetime, timeZone) === date && b.status !== 'cancelled'),
     [bookings, date, timeZone]
   );
   const timelineHeight = timeSlots.length * SLOT_HEIGHT;
+  const bookingById = useMemo(() => new Map(dayBookings.map((b) => [b.id, b])), [dayBookings]);
 
   const columns = useMemo(() => {
     if (viewMode === 'room') {
@@ -108,7 +141,7 @@ export function ScheduleGrid({
   function position(booking: Booking, columnBookings: Booking[]) {
     const startMinute = minutesSinceMidnight(booking.datetime, timeZone);
     const dayStart = GRID_START_HOUR * 60;
-    const top = Math.max(0, ((startMinute - dayStart) / GRID_SLOT_MINUTES) * SLOT_HEIGHT);
+    const top = Math.max(0, ((startMinute - dayStart) / slotMinutes) * SLOT_HEIGHT);
     const endMinute = startMinute + booking.duration_minutes;
     const overlaps = columnBookings
       .filter((item) => {
@@ -119,10 +152,118 @@ export function ScheduleGrid({
     const width = 100 / overlaps.length;
     return {
       top,
-      height: Math.max(48, (booking.duration_minutes / GRID_SLOT_MINUTES) * SLOT_HEIGHT - 4),
+      height: Math.max(48, (booking.duration_minutes / slotMinutes) * SLOT_HEIGHT - 4),
       left: width * overlaps.findIndex((item) => item.id === booking.id),
       width,
     };
+  }
+
+  function clearDragState() {
+    setDraggingId(null);
+    setConflictIds([]);
+    setDropTime(null);
+  }
+
+  function findConflicts(moving: Booking, columnBookings: Booking[], time: string): string[] {
+    const start = timeToMinutes(time);
+    return columnBookings
+      .filter(
+        (item) =>
+          item.id !== moving.id &&
+          intervalsOverlap(
+            start,
+            moving.duration_minutes,
+            minutesSinceMidnight(item.datetime, timeZone),
+            item.duration_minutes
+          )
+      )
+      .map((item) => item.id);
+  }
+
+  function buildTarget(columnId: string, time: string, moving: Booking): ScheduleRescheduleTarget {
+    if (viewMode === 'room') {
+      return {
+        time,
+        masterId: moving.master_id,
+        roomId: columnId,
+      };
+    }
+    return {
+      time,
+      masterId: columnId,
+      roomId: moving.room_id ?? null,
+    };
+  }
+
+  function onCardDragStart(event: DragEvent, booking: Booking) {
+    if (!onReschedule || rescheduling) {
+      event.preventDefault();
+      return;
+    }
+    event.dataTransfer.setData('text/booking-id', booking.id);
+    event.dataTransfer.effectAllowed = 'move';
+    setDraggingId(booking.id);
+    setConflictIds([]);
+    suppressClickRef.current = false;
+  }
+
+  function onSlotDragOver(event: DragEvent, columnBookings: Booking[], time: string) {
+    if (!draggingId || !onReschedule) return;
+    const moving = bookingById.get(draggingId);
+    if (!moving) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    setDropTime(time);
+    setConflictIds(findConflicts(moving, columnBookings, time));
+  }
+
+  function onCardDragOver(event: DragEvent, target: Booking, columnBookings: Booking[]) {
+    if (!draggingId || draggingId === target.id || !onReschedule) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    const moving = bookingById.get(draggingId);
+    if (!moving) return;
+    const time = zonedTimeHm(target.datetime, timeZone);
+    setDropTime(time);
+    const conflicts = new Set(findConflicts(moving, columnBookings, time));
+    conflicts.add(target.id);
+    setConflictIds([...conflicts]);
+  }
+
+  async function finishDrop(columnId: string, columnBookings: Booking[], time: string) {
+    if (!draggingId || !onReschedule || rescheduling) return;
+    const moving = bookingById.get(draggingId);
+    if (!moving) {
+      clearDragState();
+      return;
+    }
+
+    const conflicts = findConflicts(moving, columnBookings, time);
+    if (conflicts.length) {
+      setConflictIds(conflicts);
+      setDropTime(time);
+      suppressClickRef.current = true;
+      return;
+    }
+
+    const currentTime = zonedTimeHm(moving.datetime, timeZone);
+    const sameColumn =
+      viewMode === 'room' ? moving.room_id === columnId : moving.master_id === columnId;
+    if (sameColumn && currentTime === time) {
+      clearDragState();
+      return;
+    }
+
+    setRescheduling(true);
+    suppressClickRef.current = true;
+    try {
+      await onReschedule(moving, buildTarget(columnId, time, moving));
+      clearDragState();
+    } catch {
+      setConflictIds(findConflicts(moving, columnBookings, time));
+    } finally {
+      setRescheduling(false);
+    }
   }
 
   return (
@@ -130,21 +271,39 @@ export function ScheduleGrid({
       <div className="schedule-grid" style={{ minWidth: `${72 + displayColumns.length * 220}px` }}>
         <div className="schedule-time-column">
           <div className="schedule-corner">Час</div>
-          {timeSlots.map((time) => <div className="schedule-time" key={time}>{time}</div>)}
+          {timeSlots.map((time) => (
+            <div className="schedule-time" key={time}>
+              {time}
+            </div>
+          ))}
         </div>
         {displayColumns.map((column) => {
           const columnBookings = dayBookings.filter(column.filter);
           return (
             <div className="master-day" key={column.id}>
               <div className="master-header">
-                {column.photoUrl
-                  ? <img src={column.photoUrl} alt="" />
-                  : <span className="master-avatar">{column.title.slice(0, 1)}</span>}
-                <span><b>{column.title}</b><small>{column.subtitle}</small></span>
+                {column.photoUrl ? (
+                  <img src={column.photoUrl} alt="" />
+                ) : (
+                  <span className="master-avatar">{column.title.slice(0, 1)}</span>
+                )}
+                <span>
+                  <b>{column.title}</b>
+                  <small>{column.subtitle}</small>
+                </span>
               </div>
               <div className="master-timeline" style={{ height: timelineHeight }}>
                 {timeSlots.map((time) => (
-                  <button className="empty-slot" key={time} onClick={() => column.onAdd(time)}>
+                  <button
+                    className={`empty-slot${dropTime === time && draggingId ? ' drop-target' : ''}`}
+                    key={time}
+                    onClick={() => column.onAdd(time)}
+                    onDragOver={(event) => onSlotDragOver(event, columnBookings, time)}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      void finishDrop(column.id, columnBookings, time);
+                    }}
+                  >
                     <span>+ запис</span>
                   </button>
                 ))}
@@ -152,27 +311,63 @@ export function ScheduleGrid({
                   const pos = position(booking, columnBookings);
                   const time = zonedTimeHm(booking.datetime, timeZone);
                   const attention = bookingNeedsAttention(booking);
+                  const isConflict = conflictIds.includes(booking.id);
+                  const isDragging = draggingId === booking.id;
                   return (
                     <article
                       key={booking.id}
-                      className={`booking-card ${bookingTone(booking)} ${attention ? 'booking-attention' : ''}`}
+                      draggable={Boolean(onReschedule) && !rescheduling}
+                      className={[
+                        'booking-card',
+                        bookingTone(booking),
+                        attention ? 'booking-attention' : '',
+                        isConflict ? 'booking-drop-conflict' : '',
+                        isDragging ? 'booking-dragging' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
                       style={{
                         top: pos.top,
                         height: pos.height,
                         left: `calc(${pos.left}% + 2px)`,
                         width: `calc(${pos.width}% - 4px)`,
                       }}
-                      onClick={() => onBookingClick(booking)}
+                      onClick={() => {
+                        if (suppressClickRef.current) {
+                          suppressClickRef.current = false;
+                          return;
+                        }
+                        onBookingClick(booking);
+                      }}
+                      onDragStart={(event) => onCardDragStart(event, booking)}
+                      onDragEnd={clearDragState}
+                      onDragOver={(event) => onCardDragOver(event, booking, columnBookings)}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        // Drop on existing booking = attention only, no move.
+                        if (draggingId && draggingId !== booking.id) {
+                          setConflictIds((prev) =>
+                            prev.includes(booking.id) ? prev : [...prev, booking.id]
+                          );
+                          suppressClickRef.current = true;
+                        }
+                      }}
                     >
                       <div className="booking-card-head">
                         <span className="client-initials">{initials(booking)}</span>
                         <strong>{booking.client_name}</strong>
-                        <span className="booking-icons">{attention ? '⚠' : ''}{booking.files_count ? ` 📎${booking.files_count}` : ''}</span>
+                        <span className="booking-icons">
+                          {attention || isConflict ? '⚠' : ''}
+                          {booking.files_count ? ` 📎${booking.files_count}` : ''}
+                        </span>
                       </div>
                       {column.showDoctor && (
                         <div className="booking-meta">{booking.master_name || 'Лікар'}</div>
                       )}
-                      <div className="booking-meta"><b>{time}</b> · {booking.service_name}</div>
+                      <div className="booking-meta">
+                        <b>{time}</b> · {booking.service_name}
+                      </div>
                       {booking.notes && <div className="booking-note">{booking.notes}</div>}
                       {booking.client_phone && <div className="booking-phone">{booking.client_phone}</div>}
                       <button
@@ -184,7 +379,9 @@ export function ScheduleGrid({
                           setNoteBooking(booking.id);
                           setNote(booking.notes ?? '');
                         }}
-                      >✎</button>
+                      >
+                        ✎
+                      </button>
                       {noteBooking === booking.id && (
                         <form
                           className="inline-note"
@@ -213,8 +410,12 @@ export function ScheduleGrid({
                             }}
                           />
                           <div>
-                            <button type="button" onClick={() => setNoteBooking(null)}>Скасувати</button>
-                            <button type="submit" disabled={savingNote}>Зберегти</button>
+                            <button type="button" onClick={() => setNoteBooking(null)}>
+                              Скасувати
+                            </button>
+                            <button type="submit" disabled={savingNote}>
+                              Зберегти
+                            </button>
                           </div>
                         </form>
                       )}

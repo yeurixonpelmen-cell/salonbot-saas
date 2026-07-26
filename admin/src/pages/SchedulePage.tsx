@@ -2,7 +2,8 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   api, getApiUrl, getToken, Booking, BookingStatus, Client, CreateBookingPayload, Master, Room, SalonSettings, Service,
-  UpdateBookingPayload, VisitStatus, GRID_END_HOUR, GRID_START_HOUR, statusLabel, visitStatusLabel,
+  UpdateBookingPayload, VisitStatus, GRID_END_HOUR, GRID_START_HOUR, GRID_SLOT_OPTIONS, SCHEDULE_SLOT_STORAGE_KEY,
+  normalizeGridSlotMinutes, statusLabel, visitStatusLabel, type GridSlotMinutes,
 } from '../api';
 import {
   ScheduleGrid,
@@ -32,6 +33,13 @@ export function SchedulePage() {
   const [services, setServices] = useState<Service[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [viewMode, setViewMode] = useState<ScheduleViewMode>('master');
+  const [slotMinutes, setSlotMinutes] = useState<GridSlotMinutes>(() => {
+    try {
+      return normalizeGridSlotMinutes(localStorage.getItem(SCHEDULE_SLOT_STORAGE_KEY));
+    } catch {
+      return 30;
+    }
+  });
   const [selected, setSelected] = useState<Booking | null>(null);
   const [addDraft, setAddDraft] = useState<AddDraft>(null);
   const [mobileColumnIndex, setMobileColumnIndex] = useState(0);
@@ -237,6 +245,29 @@ export function SchedulePage() {
               Кабінети
             </button>
           </div>
+          <label className="slot-step-control">
+            <span>Сітка</span>
+            <select
+              className="ui-input"
+              value={slotMinutes}
+              onChange={(event) => {
+                const next = normalizeGridSlotMinutes(event.target.value);
+                setSlotMinutes(next);
+                try {
+                  localStorage.setItem(SCHEDULE_SLOT_STORAGE_KEY, String(next));
+                } catch {
+                  // ignore
+                }
+              }}
+              aria-label="Крок сітки"
+            >
+              {GRID_SLOT_OPTIONS.map((minutes) => (
+                <option key={minutes} value={minutes}>
+                  {minutes} хв
+                </option>
+              ))}
+            </select>
+          </label>
           {viewMode === 'room' && (
             <Button type="button" variant="secondary" onClick={() => setRoomModalOpen(true)}>
               + Кабінет
@@ -293,10 +324,24 @@ export function SchedulePage() {
         viewMode={viewMode}
         date={date}
         timeZone={timeZone}
+        slotMinutes={slotMinutes}
         mobileColumnIndex={mobileColumnIndex}
         onBookingClick={setSelected}
         onAddClick={setAddDraft}
         onNoteSave={(booking, notes) => updateBooking(booking.id, { notes })}
+        onReschedule={async (booking, target) => {
+          setError('');
+          try {
+            await updateBooking(booking.id, {
+              datetime: `${date}T${target.time}:00`,
+              masterId: target.masterId ?? booking.master_id,
+              roomId: target.roomId !== undefined ? target.roomId : booking.room_id ?? null,
+            });
+          } catch (err) {
+            setError((err as { error?: string }).error ?? 'Не вдалось перенести запис');
+            throw err;
+          }
+        }}
       />
 
       {selected && (
@@ -307,6 +352,7 @@ export function SchedulePage() {
           services={services}
           rooms={activeRooms}
           timeZone={timeZone}
+          slotMinutes={slotMinutes}
           onClose={() => setSelected(null)}
           onSave={async (payload) => {
             await updateBooking(selected.id, payload);
@@ -352,13 +398,14 @@ export function SchedulePage() {
 }
 
 function BookingDrawer({
-  booking, masters, services, rooms, timeZone, onClose, onSave,
+  booking, masters, services, rooms, timeZone, slotMinutes = 30, onClose, onSave,
 }: {
   booking: Booking;
   masters: Master[];
   services: Service[];
   rooms: Room[];
   timeZone: string;
+  slotMinutes?: GridSlotMinutes;
   onClose: () => void;
   onSave: (payload: UpdateBookingPayload) => Promise<void>;
 }) {
@@ -453,8 +500,15 @@ function BookingDrawer({
           )}
           <label className="full">
             Дата й час
-            <input type="datetime-local" step={1800} value={form.datetime} onChange={(e) => setForm({ ...form, datetime: e.target.value })} />
-            <span className="field-hint">Робочі години сітки: {String(GRID_START_HOUR).padStart(2, '0')}:00–{String(GRID_END_HOUR).padStart(2, '0')}:00</span>
+            <input
+              type="datetime-local"
+              step={slotMinutes * 60}
+              value={form.datetime}
+              onChange={(e) => setForm({ ...form, datetime: e.target.value })}
+            />
+            <span className="field-hint">
+              Робочі години сітки: {String(GRID_START_HOUR).padStart(2, '0')}:00–{String(GRID_END_HOUR).padStart(2, '0')}:00 · крок {slotMinutes} хв
+            </span>
           </label>
           <label className="attention-check full"><input type="checkbox" checked={form.needs_attention} onChange={(e) => setForm({ ...form, needs_attention: e.target.checked })} /> Потребує уваги</label>
           {form.needs_attention && <label className="full">Причина<input value={form.attention_reason} onChange={(e) => setForm({ ...form, attention_reason: e.target.value })} /></label>}

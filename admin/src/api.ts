@@ -29,7 +29,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, { ...options, headers });
   if (res.status === 401) {
     clearToken();
-    // Onboarding complete uses Telegram login data, not JWT — don't force /login redirect.
+    // Onboarding uses claim/complete tokens, not admin JWT — don't force /login redirect.
     if (!path.startsWith('/api/onboarding/')) {
       window.location.href = '/login';
     }
@@ -247,12 +247,21 @@ export interface SalonSettings {
 }
 
 export const GRID_SLOT_MINUTES = 30;
+export const GRID_SLOT_OPTIONS = [15, 30, 45, 60] as const;
+export type GridSlotMinutes = (typeof GRID_SLOT_OPTIONS)[number];
 export const GRID_START_HOUR = 8;
 export const GRID_END_HOUR = 20;
+export const SCHEDULE_SLOT_STORAGE_KEY = 'salonbot_schedule_slot_minutes';
 
-export function getGridTimeSlots(): string[] {
+export function normalizeGridSlotMinutes(value: unknown): GridSlotMinutes {
+  const n = Number(value);
+  return (GRID_SLOT_OPTIONS as readonly number[]).includes(n) ? (n as GridSlotMinutes) : GRID_SLOT_MINUTES;
+}
+
+export function getGridTimeSlots(slotMinutes: number = GRID_SLOT_MINUTES): string[] {
+  const step = normalizeGridSlotMinutes(slotMinutes);
   const slots: string[] = [];
-  for (let m = GRID_START_HOUR * 60; m < GRID_END_HOUR * 60; m += GRID_SLOT_MINUTES) {
+  for (let m = GRID_START_HOUR * 60; m < GRID_END_HOUR * 60; m += step) {
     const h = Math.floor(m / 60);
     const min = m % 60;
     slots.push(`${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`);
@@ -260,14 +269,15 @@ export function getGridTimeSlots(): string[] {
   return slots;
 }
 
-export function durationToRowSpan(durationMinutes: number): number {
-  return Math.max(1, Math.ceil(durationMinutes / GRID_SLOT_MINUTES));
+export function durationToRowSpan(durationMinutes: number, slotMinutes: number = GRID_SLOT_MINUTES): number {
+  return Math.max(1, Math.ceil(durationMinutes / normalizeGridSlotMinutes(slotMinutes)));
 }
 
-export function bookingToRowStart(datetime: string): number {
+export function bookingToRowStart(datetime: string, slotMinutes: number = GRID_SLOT_MINUTES): number {
+  const step = normalizeGridSlotMinutes(slotMinutes);
   const d = new Date(datetime);
   const minutes = d.getHours() * 60 + d.getMinutes() - GRID_START_HOUR * 60;
-  return Math.floor(minutes / GRID_SLOT_MINUTES) + 2; // +2 for header row
+  return Math.floor(minutes / step) + 2; // +2 for header row
 }
 
 export function bookingToCol(masterIndex: number): number {

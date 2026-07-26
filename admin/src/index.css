@@ -236,6 +236,14 @@ h1 { margin: 2px 0 3px; font-size: 30px; line-height: 1.15; letter-spacing: -.04
   box-shadow: var(--shadow);
 }
 .date-controls, .schedule-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.slot-step-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted, #64748b);
+}
+.slot-step-control .ui-input { width: 96px; }
 .date-controls .ui-input { width: 148px; }
 .schedule-filters .ui-input { width: 190px; }
 .view-toggle {
@@ -403,6 +411,7 @@ html[data-theme='dark'] .view-toggle button.active {
   transition: background .12s, color .12s;
 }
 .empty-slot:hover { color: var(--accent); background: #f2fbf8; }
+.empty-slot.drop-target { background: #eef8f5; }
 .booking-card {
   position: absolute;
   z-index: 2;
@@ -415,8 +424,18 @@ html[data-theme='dark'] .view-toggle button.active {
   color: #163532;
   background: linear-gradient(180deg, #eaf8f5, #e1f3ef);
   box-shadow: 0 3px 10px rgba(15, 80, 72, 0.08);
-  cursor: pointer;
+  cursor: grab;
   transition: filter .12s, transform .12s, box-shadow .12s;
+}
+.booking-card.booking-dragging {
+  opacity: 0.55;
+  cursor: grabbing;
+}
+.booking-card.booking-drop-conflict {
+  outline: 2px solid #e44752;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 3px rgba(228, 71, 82, 0.18);
+  z-index: 5;
 }
 .booking-card:hover {
   z-index: 5;

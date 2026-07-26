@@ -39,3 +39,27 @@ export function verifySalonSelectionJwt(token: string): SalonSelectionPayload | 
     return null;
   }
 }
+
+export interface OnboardingPayload {
+  purpose: 'email_onboarding';
+  code_id: string;
+  email: string;
+}
+
+export function signOnboardingJwt(codeId: string, email: string): string {
+  return jwt.sign(
+    { purpose: 'email_onboarding', code_id: codeId, email },
+    JWT_SECRET,
+    { expiresIn: '2h' }
+  );
+}
+
+export function verifyOnboardingJwt(token: string): OnboardingPayload | null {
+  try {
+    const payload = jwt.verify(token, JWT_SECRET) as OnboardingPayload;
+    if (payload.purpose !== 'email_onboarding' || !payload.code_id || !payload.email) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}

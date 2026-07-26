@@ -38,6 +38,83 @@ router.post('/login', async (req: Request, res: Response) => {
 
 router.use(superAuthMiddleware);
 
+function generateActivationCode(): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let body = '';
+  for (let i = 0; i < 8; i += 1) {
+    body += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return `SB-${body.slice(0, 4)}-${body.slice(4)}`;
+}
+
+router.get('/activation-codes', async (_req: Request, res: Response) => {
+  const { data, error } = await supabase
+    .from('activation_codes')
+    .select('id, code, status, reserved_email, redeemed_at, salon_id, note, created_at')
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+  res.json(data ?? []);
+});
+
+router.post('/activation-codes', async (req: Request, res: Response) => {
+  const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
+  const countRaw = Number(req.body?.count ?? 1);
+  const count = Number.isFinite(countRaw) ? Math.min(Math.max(Math.floor(countRaw), 1), 20) : 1;
+
+  const created: { id: string; code: string; status: string; note: string | null; created_at: string }[] = [];
+  for (let i = 0; i < count; i += 1) {
+    let inserted = null;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const code = generateActivationCode();
+      const { data, error } = await supabase
+        .from('activation_codes')
+        .insert({ code, note: note || null, status: 'unused' })
+        .select('id, code, status, note, created_at')
+        .single();
+      if (!error && data) {
+        inserted = data;
+        break;
+      }
+    }
+    if (!inserted) {
+      res.status(500).json({ error: 'Не вдалось згенерувати код', created });
+      return;
+    }
+    created.push(inserted);
+  }
+
+  res.status(201).json({ codes: created });
+});
+
+router.patch('/activation-codes/:id', async (req: Request, res: Response) => {
+  if (req.body?.revoke !== true) {
+    res.status(400).json({ error: 'Підтримується лише revoke: true' });
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from('activation_codes')
+    .update({ status: 'revoked' })
+    .eq('id', req.params.id)
+    .in('status', ['unused', 'reserved'])
+    .select('id, code, status, reserved_email, redeemed_at, salon_id, note, created_at')
+    .maybeSingle();
+
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+  if (!data) {
+    res.status(404).json({ error: 'Код не знайдено або вже використано' });
+    return;
+  }
+  res.json(data);
+});
+
 router.get('/salons', async (_req: Request, res: Response) => {
   const { data, error } = await supabase
     .from('salons')

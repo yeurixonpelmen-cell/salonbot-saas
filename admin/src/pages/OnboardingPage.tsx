@@ -1,37 +1,21 @@
-import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api, setToken } from '../api';
 import { useAuth } from '../context/AuthContext';
 
-const BOT_USERNAME = import.meta.env.VITE_LOGIN_BOT_USERNAME ?? 'salonbot_login_bot';
-
 type Step = 0 | 1 | 2 | 3 | 4;
 
-type Owner = {
-  id: number;
-  first_name?: string;
-};
-
-type TelegramAuthData = Record<string, string>;
+const ONBOARDING_TOKEN_KEY = 'onboarding_token';
+const ONBOARDING_EMAIL_KEY = 'onboarding_email';
 
 export function OnboardingPage() {
   const { refreshAuth } = useAuth();
-  const loginRef = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState<Step>(0);
-  const [ownerAuthData, setOwnerAuthData] = useState<TelegramAuthData | null>(() => {
-    const raw = sessionStorage.getItem('onboarding_owner_auth');
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as TelegramAuthData;
-    } catch {
-      sessionStorage.removeItem('onboarding_owner_auth');
-      return null;
-    }
-  });
-  const [owner, setOwner] = useState<Owner | null>(() => {
-    const id = sessionStorage.getItem('onboarding_owner_id');
-    const firstName = sessionStorage.getItem('onboarding_first_name') ?? undefined;
-    return id ? { id: Number(id), first_name: firstName } : null;
-  });
+  const [onboardingToken, setOnboardingToken] = useState(() => sessionStorage.getItem(ONBOARDING_TOKEN_KEY) ?? '');
+  const [ownerEmail, setOwnerEmail] = useState(() => sessionStorage.getItem(ONBOARDING_EMAIL_KEY) ?? '');
+  const [activationCode, setActivationCode] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [nameUk, setNameUk] = useState('');
   const [nameEn, setNameEn] = useState('');
   const [address, setAddress] = useState('');
@@ -44,42 +28,42 @@ export function OnboardingPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (owner && step === 0) setStep(1);
-  }, [owner, step]);
+    if (onboardingToken && ownerEmail && step === 0) setStep(1);
+  }, [onboardingToken, ownerEmail, step]);
 
-  useEffect(() => {
-    if (step !== 0 || !loginRef.current) return;
+  function clearOnboardingSession() {
+    sessionStorage.removeItem(ONBOARDING_TOKEN_KEY);
+    sessionStorage.removeItem(ONBOARDING_EMAIL_KEY);
+    sessionStorage.removeItem('onboarding_owner_id');
+    sessionStorage.removeItem('onboarding_first_name');
+    sessionStorage.removeItem('onboarding_owner_auth');
+    setOnboardingToken('');
+    setOwnerEmail('');
+  }
 
-    (window as unknown as { onOnboardingTelegramAuth?: (user: Record<string, string | number>) => void })
-      .onOnboardingTelegramAuth = (user: Record<string, string | number>) => {
-      const normalized: TelegramAuthData = Object.fromEntries(
-        Object.entries(user).map(([key, value]) => [key, String(value)])
-      );
-      const nextOwner = { id: Number(normalized.id), first_name: normalized.first_name };
-      sessionStorage.setItem('onboarding_owner_id', String(nextOwner.id));
-      sessionStorage.setItem('onboarding_first_name', nextOwner.first_name ?? '');
-      sessionStorage.setItem('onboarding_owner_auth', JSON.stringify(normalized));
-      setOwnerAuthData(normalized);
-      setOwner(nextOwner);
+  async function claimCode(e: FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await api.post<{ onboardingToken: string; email: string }>('/api/onboarding/claim', {
+        code: activationCode,
+        email,
+        password,
+      });
+      sessionStorage.setItem(ONBOARDING_TOKEN_KEY, result.onboardingToken);
+      sessionStorage.setItem(ONBOARDING_EMAIL_KEY, result.email);
+      setOnboardingToken(result.onboardingToken);
+      setOwnerEmail(result.email);
+      setMessage('Код прийнято. Далі налаштуйте салон.');
       setStep(1);
-    };
-
-    const script = document.createElement('script');
-    script.src = 'https://telegram.org/js/telegram-widget.js?22';
-    script.async = true;
-    script.setAttribute('data-telegram-login', BOT_USERNAME);
-    script.setAttribute('data-size', 'large');
-    script.setAttribute('data-onauth', 'onOnboardingTelegramAuth(user)');
-    script.setAttribute('data-request-access', 'write');
-    loginRef.current.innerHTML = '';
-    loginRef.current.appendChild(script);
-
-    return () => {
-      delete (window as unknown as { onOnboardingTelegramAuth?: (user: Record<string, string>) => void })
-        .onOnboardingTelegramAuth;
-      script.remove();
-    };
-  }, [step]);
+    } catch (err) {
+      setError((err as { error?: string }).error ?? 'Не вдалось активувати код');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function uploadLogo(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -143,18 +127,10 @@ export function OnboardingPage() {
     }
   }
 
-  function clearOnboardingOwner() {
-    sessionStorage.removeItem('onboarding_owner_id');
-    sessionStorage.removeItem('onboarding_first_name');
-    sessionStorage.removeItem('onboarding_owner_auth');
-    setOwner(null);
-    setOwnerAuthData(null);
-  }
-
   async function finish() {
-    if (!owner || !ownerAuthData) {
-      clearOnboardingOwner();
-      setError('Сесія Telegram відсутня. Увійдіть ще раз і завершіть підключення в цій вкладці.');
+    if (!onboardingToken) {
+      clearOnboardingSession();
+      setError('Сесія онбордингу відсутня. Введіть код і email знову.');
       setStep(0);
       return;
     }
@@ -164,8 +140,7 @@ export function OnboardingPage() {
       const result = await api.post<{ salonId: string; token: string; botUsername: string }>(
         '/api/onboarding/complete',
         {
-          ownerTelegramId: owner.id,
-          ownerAuthData,
+          onboardingToken,
           nameUk,
           nameEn,
           address,
@@ -177,17 +152,15 @@ export function OnboardingPage() {
       );
       setToken(result.token);
       refreshAuth();
-      clearOnboardingOwner();
+      clearOnboardingSession();
       setStep(4);
     } catch (err) {
-      const message = (err as { error?: string }).error ?? 'Не вдалось завершити онбординг';
-      if (message.toLowerCase().includes('telegram login') || message.toLowerCase().includes('unauthorized')) {
-        clearOnboardingOwner();
+      const msg = (err as { error?: string }).error ?? 'Не вдалось завершити онбординг';
+      if (msg.toLowerCase().includes('сесія') || msg.toLowerCase().includes('онбординг')) {
+        clearOnboardingSession();
         setStep(0);
-        setError('Сесія Telegram закінчилась. Увійдіть ще раз і одразу натисніть Завершити на кроці 3.');
-      } else {
-        setError(message);
       }
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -198,7 +171,7 @@ export function OnboardingPage() {
       <div className="w-full max-w-2xl space-y-4">
         <div className="bg-white border rounded-2xl p-5">
           <h1 className="text-2xl font-bold">Підключення салону</h1>
-          <p className="text-gray-500">Крок {step} з 4</p>
+          <p className="text-gray-500">Крок {step} з 4 · лише через email і код активації</p>
           <div className="mt-4 h-2 bg-gray-100 rounded-full overflow-hidden">
             <div className="h-full bg-blue-600" style={{ width: `${((step + 1) / 5) * 100}%` }} />
           </div>
@@ -209,16 +182,36 @@ export function OnboardingPage() {
 
         <div className="bg-white border rounded-2xl p-5">
           {step === 0 && (
-            <div className="text-center space-y-4">
-              <h2 className="text-xl font-semibold">Крок 0 — Вхід</h2>
-              <p className="text-gray-500">Увійдіть через Telegram, щоб прив'язати салон до власника.</p>
-              <div ref={loginRef} className="flex justify-center" />
-            </div>
+            <form onSubmit={claimCode} className="space-y-4">
+              <h2 className="text-xl font-semibold">Крок 0 — Код і email</h2>
+              <p className="text-gray-500 text-sm">
+                Один код = один салон. Після активації входите в адмінку цим email і паролем.
+              </p>
+              <Input label="Код активації *" value={activationCode} onChange={setActivationCode} required />
+              <Input label="Email власника *" value={email} onChange={setEmail} type="email" required />
+              <Input
+                label="Пароль (мін. 8 символів) *"
+                value={password}
+                onChange={setPassword}
+                type="password"
+                required
+              />
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-60"
+              >
+                {loading ? 'Перевірка…' : 'Продовжити'}
+              </button>
+              <p className="text-sm text-center text-gray-500">
+                Уже є акаунт? <Link to="/login" className="text-blue-600">Увійти</Link>
+              </p>
+            </form>
           )}
 
           {step === 1 && (
             <SalonInfoStep
-              owner={owner}
+              ownerEmail={ownerEmail}
               nameUk={nameUk}
               setNameUk={setNameUk}
               nameEn={nameEn}
@@ -253,12 +246,18 @@ export function OnboardingPage() {
               loading={loading}
               onBack={() => setStep(2)}
               onFinish={finish}
-              canFinish={Boolean(owner && nameUk && rawBotToken && botUsername)}
+              canFinish={Boolean(onboardingToken && nameUk && rawBotToken && botUsername)}
             />
           )}
 
           {step === 4 && (
-            <DoneStep botUsername={botUsername} onAdmin={() => { window.location.href = '/'; }} />
+            <DoneStep
+              botUsername={botUsername}
+              email={ownerEmail}
+              onAdmin={() => {
+                window.location.href = '/';
+              }}
+            />
           )}
         </div>
       </div>
@@ -267,7 +266,7 @@ export function OnboardingPage() {
 }
 
 function SalonInfoStep({
-  owner,
+  ownerEmail,
   nameUk,
   setNameUk,
   nameEn,
@@ -279,7 +278,7 @@ function SalonInfoStep({
   loading,
   onNext,
 }: {
-  owner: Owner | null;
+  ownerEmail: string;
   nameUk: string;
   setNameUk: (value: string) => void;
   nameEn: string;
@@ -299,25 +298,27 @@ function SalonInfoStep({
   return (
     <form onSubmit={submit} className="space-y-4">
       <h2 className="text-xl font-semibold">Крок 1 — Інформація про салон</h2>
-      {owner && <p className="text-sm text-gray-500">Власник: {owner.first_name ?? owner.id}</p>}
+      <p className="text-sm text-gray-500">Власник: {ownerEmail}</p>
       <Input label="Назва (укр) *" value={nameUk} onChange={setNameUk} required />
       <Input label="Назва (англ)" value={nameEn} onChange={setNameEn} />
       <Input label="Адреса" value={address} onChange={setAddress} />
       <div>
         <div className="text-sm text-gray-600 mb-2">Логотип</div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col items-start gap-2">
           {logoUrl ? (
             <img src={logoUrl} alt="" className="w-16 h-16 rounded-xl object-cover border" />
           ) : (
-            <div className="w-16 h-16 rounded-xl bg-gray-100 border flex items-center justify-center">📷</div>
+            <div className="w-16 h-16 rounded-xl bg-gray-100 border" />
           )}
-          <label className="px-4 py-2 rounded-lg border cursor-pointer bg-white hover:bg-gray-50">
+          <label className="px-4 py-2 rounded-lg border cursor-pointer bg-white hover:bg-gray-50 text-sm">
             {loading ? 'Завантаження...' : 'Завантажити фото'}
             <input type="file" accept="image/*" onChange={uploadLogo} className="hidden" />
           </label>
         </div>
       </div>
-      <button className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium">Далі</button>
+      <button type="submit" disabled={!nameUk.trim()} className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-60">
+        Далі
+      </button>
     </form>
   );
 }
@@ -334,31 +335,37 @@ function BotStep({
   rawBotToken: string;
   setRawBotToken: (value: string) => void;
   botUsername: string;
-  verifyBot: () => void;
+  verifyBot: () => Promise<void>;
   loading: boolean;
   onBack: () => void;
   onNext: () => void;
 }) {
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-semibold">Крок 2 — Налаштування Telegram бота</h2>
-      <div className="rounded-xl bg-gray-50 border p-4 text-sm text-gray-600 space-y-1">
-        <p>1. Відкрийте Telegram і знайдіть @BotFather</p>
-        <p>2. Надішліть команду /newbot</p>
-        <p>3. Введіть назву бота</p>
-        <p>4. Введіть username, наприклад mysalon_bot</p>
-        <p>5. Скопіюйте токен і вставте нижче</p>
-      </div>
+      <h2 className="text-xl font-semibold">Крок 2 — Telegram-бот салону</h2>
+      <p className="text-sm text-gray-500">
+        Створіть бота в @BotFather і вставте токен. Це бот для клієнтів салону, не логін адмінки.
+      </p>
       <Input label="Токен бота *" value={rawBotToken} onChange={setRawBotToken} required />
-      {botUsername && <p className="text-green-700">Бот @{botUsername} знайдено</p>}
+      <button
+        type="button"
+        disabled={loading || !rawBotToken.trim()}
+        onClick={() => void verifyBot()}
+        className="px-4 py-2 rounded-lg border bg-white"
+      >
+        {loading ? 'Перевірка…' : 'Перевірити токен'}
+      </button>
+      {botUsername && <p className="text-sm text-green-700">Бот: @{botUsername}</p>}
       <div className="flex gap-2">
-        <button type="button" onClick={onBack} className="px-4 py-3 rounded-lg border">
+        <button type="button" onClick={onBack} className="flex-1 py-3 rounded-lg border">
           Назад
         </button>
-        <button type="button" onClick={verifyBot} disabled={loading || !rawBotToken} className="px-4 py-3 rounded-lg bg-gray-800 text-white disabled:opacity-50">
-          Перевірити
-        </button>
-        <button type="button" onClick={onNext} disabled={!botUsername} className="flex-1 py-3 rounded-lg bg-blue-600 text-white disabled:opacity-50">
+        <button
+          type="button"
+          disabled={!botUsername}
+          onClick={onNext}
+          className="flex-1 py-3 rounded-lg bg-blue-600 text-white disabled:opacity-60"
+        >
           Далі
         </button>
       </div>
@@ -379,53 +386,61 @@ function NotificationsStep({
   botUsername: string;
   adminChatId: string;
   setAdminChatId: (value: string) => void;
-  verifyChat: () => void;
+  verifyChat: () => Promise<void>;
   loading: boolean;
   onBack: () => void;
-  onFinish: () => void;
+  onFinish: () => Promise<void>;
   canFinish: boolean;
 }) {
   return (
     <div className="space-y-4">
       <h2 className="text-xl font-semibold">Крок 3 — Сповіщення</h2>
-      <div className="rounded-xl bg-gray-50 border p-4 text-sm text-gray-600 space-y-1">
-        <p>1. Створіть групу або канал в Telegram</p>
-        <p>2. Додайте @{botUsername} як адміна</p>
-        <p>3. Надішліть будь-яке повідомлення в групу/канал</p>
-        <p>4. Вставте Chat ID нижче</p>
-      </div>
-      <Input label="Chat ID для сповіщень" value={adminChatId} onChange={setAdminChatId} />
+      <p className="text-sm text-gray-500">
+        Додайте @{botUsername || 'бот'} у групу/чат і вставте chat_id (можна пропустити і налаштувати пізніше).
+      </p>
+      <Input label="Admin chat ID" value={adminChatId} onChange={setAdminChatId} />
+      <button
+        type="button"
+        disabled={loading || !adminChatId.trim() || !botUsername}
+        onClick={() => void verifyChat()}
+        className="px-4 py-2 rounded-lg border bg-white"
+      >
+        {loading ? 'Надсилання…' : 'Надіслати тест'}
+      </button>
       <div className="flex gap-2">
-        <button type="button" onClick={onBack} className="px-4 py-3 rounded-lg border">
+        <button type="button" onClick={onBack} className="flex-1 py-3 rounded-lg border">
           Назад
         </button>
-        <button type="button" onClick={verifyChat} disabled={loading || !adminChatId} className="px-4 py-3 rounded-lg bg-gray-800 text-white disabled:opacity-50">
-          Перевірити
-        </button>
-        <button type="button" onClick={onFinish} disabled={loading || !canFinish} className="flex-1 py-3 rounded-lg bg-blue-600 text-white disabled:opacity-50">
-          Завершити
+        <button
+          type="button"
+          disabled={!canFinish || loading}
+          onClick={() => void onFinish()}
+          className="flex-1 py-3 rounded-lg bg-blue-600 text-white disabled:opacity-60"
+        >
+          {loading ? 'Створення…' : 'Завершити'}
         </button>
       </div>
     </div>
   );
 }
 
-function DoneStep({ botUsername, onAdmin }: { botUsername: string; onAdmin: () => void }) {
-  const botUrl = `https://t.me/${botUsername}`;
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(botUrl)}`;
-
+function DoneStep({
+  botUsername,
+  email,
+  onAdmin,
+}: {
+  botUsername: string;
+  email: string;
+  onAdmin: () => void;
+}) {
   return (
-    <div className="text-center space-y-4">
-      <div className="text-5xl">🎉</div>
-      <h2 className="text-xl font-semibold">Ваш бот готовий!</h2>
-      <a href={botUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
-        t.me/{botUsername}
-      </a>
-      <div className="flex justify-center">
-        <img src={qrUrl} alt="QR code" className="rounded-xl border" />
-      </div>
-      <button onClick={onAdmin} className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium">
-        Перейти в адмін панель →
+    <div className="space-y-4 text-center">
+      <h2 className="text-xl font-semibold">Салон підключено</h2>
+      <p className="text-gray-600">
+        Бот {botUsername ? `@${botUsername}` : 'готовий'}. Вхід в адмінку: <b>{email}</b>
+      </p>
+      <button type="button" onClick={onAdmin} className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium">
+        Перейти в адмінку
       </button>
     </div>
   );
@@ -435,20 +450,23 @@ function Input({
   label,
   value,
   onChange,
+  type = 'text',
   required,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  type?: string;
   required?: boolean;
 }) {
   return (
     <label className="block">
       <span className="text-sm text-gray-600">{label}</span>
       <input
+        type={type}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
         required={required}
+        onChange={(e) => onChange(e.target.value)}
         className="w-full border rounded-lg p-3 mt-1"
       />
     </label>
