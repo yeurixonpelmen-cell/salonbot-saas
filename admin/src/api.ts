@@ -169,6 +169,8 @@ export interface Master {
   bio: string | null;
   portfolio: MasterPortfolioItem[];
   is_active: boolean;
+  default_room_id?: string | null;
+  default_room_name?: string | null;
 }
 
 export interface MasterPayload {
@@ -178,6 +180,7 @@ export interface MasterPayload {
   bio?: string | null;
   portfolio?: MasterPortfolioItem[];
   is_active?: boolean;
+  default_room_id?: string | null;
 }
 
 export interface Service {

@@ -210,11 +210,17 @@ export function SchedulePage() {
           <p>{formatDisplayDate(date)} · {bookings.length} записів</p>
         </div>
         <Button
-          onClick={() => setAddDraft({
-            masterId: masters[0]?.id ?? '',
-            roomId: viewMode === 'room' ? activeRooms[0]?.id ?? null : null,
-            time: '09:00',
-          })}
+          onClick={() => {
+            const firstMaster = masters[0];
+            setAddDraft({
+              masterId: firstMaster?.id ?? '',
+              roomId:
+                viewMode === 'room'
+                  ? activeRooms[0]?.id ?? null
+                  : firstMaster?.default_room_id ?? null,
+              time: '09:00',
+            });
+          }}
           disabled={!masters.length}
         >
           + Новий запис
@@ -563,8 +569,13 @@ function BookingForm({
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const [masterId, setMasterId] = useState(draft.masterId || masters[0]?.id || '');
-  const [roomId, setRoomId] = useState(draft.roomId ?? '');
+  const initialMasterId = draft.masterId || masters[0]?.id || '';
+  const [masterId, setMasterId] = useState(initialMasterId);
+  const [roomId, setRoomId] = useState(() => {
+    if (draft.roomId) return draft.roomId;
+    const master = masters.find((item) => item.id === initialMasterId);
+    return master?.default_room_id ?? '';
+  });
   const [serviceId, setServiceId] = useState(services[0]?.id ?? '');
   const [time, setTime] = useState(draft.time);
   const [query, setQuery] = useState('');
@@ -629,7 +640,25 @@ function BookingForm({
         <label>Ім’я клієнта<input required value={clientName} onChange={(e) => { setClientName(e.target.value); setClientId(''); }} /></label>
         <label>Телефон<input value={clientPhone} onChange={(e) => { setClientPhone(e.target.value); setClientId(''); }} /></label>
         {!clientId && clientName && <Button className="full" type="button" variant="secondary" onClick={quickCreate}>+ Створити картку клієнта</Button>}
-        <label>Спеціаліст<select required value={masterId} onChange={(e) => setMasterId(e.target.value)}>{masters.map((master) => <option key={master.id} value={master.id}>{master.name}</option>)}</select></label>
+        <label>
+          Спеціаліст
+          <select
+            required
+            value={masterId}
+            onChange={(e) => {
+              const nextMasterId = e.target.value;
+              setMasterId(nextMasterId);
+              const master = masters.find((item) => item.id === nextMasterId);
+              setRoomId(master?.default_room_id ?? '');
+            }}
+          >
+            {masters.map((master) => (
+              <option key={master.id} value={master.id}>
+                {master.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <label>Послуга<select required value={serviceId} onChange={(e) => setServiceId(e.target.value)}>{services.map((service) => <option key={service.id} value={service.id}>{service.name_uk}</option>)}</select></label>
         {!!rooms.length && (
           <label>Кабінет<select value={roomId} onChange={(e) => setRoomId(e.target.value)}>

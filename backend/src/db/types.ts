@@ -31,6 +31,7 @@ export interface Master {
   position: string | null;
   bio?: string | null;
   portfolio?: MasterPortfolioItem[];
+  default_room_id?: string | null;
   is_active: boolean;
 }
 

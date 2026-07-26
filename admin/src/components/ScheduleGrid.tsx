@@ -131,7 +131,12 @@ export function ScheduleGrid({
       subtitle: master.position || 'Спеціаліст',
       photoUrl: master.photo_url,
       filter: (booking: Booking) => booking.master_id === master.id,
-      onAdd: (time: string) => onAddClick({ masterId: master.id, time }),
+      onAdd: (time: string) =>
+        onAddClick({
+          masterId: master.id,
+          roomId: master.default_room_id ?? null,
+          time,
+        }),
       showDoctor: false,
     }));
   }, [viewMode, activeRooms, masters, onAddClick]);

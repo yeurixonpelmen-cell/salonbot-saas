@@ -211,18 +211,21 @@ function withConflictFlags(
 
 async function resolveRoomId(
   salonId: string,
-  roomId: unknown
+  roomId: unknown,
+  options: { requireActive?: boolean } = {}
 ): Promise<{ id: string } | null | undefined> {
   if (roomId === undefined) return undefined;
   if (roomId === null || roomId === '') return null;
   if (typeof roomId !== 'string') return null;
-  const { data } = await supabase
+  let query = supabase
     .from('rooms')
     .select('id')
     .eq('id', roomId)
-    .eq('salon_id', salonId)
-    .eq('is_active', true)
-    .maybeSingle();
+    .eq('salon_id', salonId);
+  if (options.requireActive !== false) {
+    query = query.eq('is_active', true);
+  }
+  const { data } = await query.maybeSingle();
   return data ?? null;
 }
 
@@ -410,7 +413,7 @@ router.post(
     return;
   }
 
-  const [{ data: service }, { data: salonSettings }] = await Promise.all([
+  const [{ data: service }, { data: salonSettings }, { data: masterRow }] = await Promise.all([
     supabase
       .from('services')
       .select('duration_minutes, name_uk')
@@ -422,15 +425,39 @@ router.post(
       .select('address, require_booking_confirmation')
       .eq('id', salonId)
       .single(),
+    supabase
+      .from('masters')
+      .select('name, default_room_id')
+      .eq('id', masterId)
+      .eq('salon_id', salonId)
+      .maybeSingle(),
   ]);
 
   if (!service) {
     res.status(400).json({ error: 'Service not found' });
     return;
   }
+  if (!masterRow) {
+    res.status(400).json({ error: 'Master not found' });
+    return;
+  }
 
   const requiresConfirmation = Boolean(salonSettings?.require_booking_confirmation);
   const bookingStatus = requiresConfirmation ? 'pending' : 'confirmed';
+  const defaultRoom = masterRow.default_room_id
+    ? await resolveRoomId(salonId, masterRow.default_room_id)
+    : null;
+  const nextRoomId = defaultRoom?.id ?? null;
+  const roomBusy = await assertRoomAvailable({
+    salonId,
+    roomId: nextRoomId,
+    bookingDatetime: normalizedDatetime,
+    durationMinutes: service.duration_minutes,
+  });
+  if (roomBusy) {
+    res.status(409).json({ error: roomBusy });
+    return;
+  }
 
   const client = await resolveClient(salonId, {
     clientName,
@@ -451,6 +478,7 @@ router.post(
       booking_datetime: normalizedDatetime,
       duration_minutes: service.duration_minutes,
       status: bookingStatus,
+      room_id: nextRoomId,
     })
     .select('id')
     .single();
@@ -464,7 +492,7 @@ router.post(
     return;
   }
 
-  const { data: master } = await supabase.from('masters').select('name').eq('id', masterId).single();
+  const master = masterRow;
 
   await sendBookingNotifications(
     salonId,
@@ -474,7 +502,7 @@ router.post(
     phone,
     normalizedDatetime,
     service.name_uk,
-    master?.name ?? '',
+    master.name ?? '',
     salonSettings?.address ?? '',
     { requiresConfirmation }
   );
@@ -1667,7 +1695,12 @@ router.post('/admin/bookings', async (req: Request, res: Response) => {
     return;
   }
   const [{ data: master }, { data: service }] = await Promise.all([
-    supabase.from('masters').select('id').eq('id', masterId).eq('salon_id', salonId).maybeSingle(),
+    supabase
+      .from('masters')
+      .select('id, default_room_id')
+      .eq('id', masterId)
+      .eq('salon_id', salonId)
+      .maybeSingle(),
     supabase
       .from('services')
       .select('id, duration_minutes')
@@ -1679,12 +1712,19 @@ router.post('/admin/bookings', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'Master or service not found' });
     return;
   }
-  const room = await resolveRoomId(salonId, roomId);
-  if (roomId !== undefined && roomId !== null && roomId !== '' && room === null) {
-    res.status(400).json({ error: 'Room not found' });
-    return;
+  let nextRoomId: string | null = null;
+  if (roomId === undefined) {
+    nextRoomId = master.default_room_id
+      ? (await resolveRoomId(salonId, master.default_room_id))?.id ?? null
+      : null;
+  } else {
+    const room = await resolveRoomId(salonId, roomId);
+    if (roomId !== null && roomId !== '' && room === null) {
+      res.status(400).json({ error: 'Room not found' });
+      return;
+    }
+    nextRoomId = room?.id ?? null;
   }
-  const nextRoomId = room === undefined ? null : room?.id ?? null;
   const roomBusy = await assertRoomAvailable({
     salonId,
     roomId: nextRoomId,
@@ -2062,32 +2102,52 @@ router.delete('/admin/rooms/:id', async (req: Request, res: Response) => {
 
 // Masters CRUD
 router.get('/admin/masters', async (req: Request, res: Response) => {
-  const { data } = await supabase
-    .from('masters')
-    .select('id, salon_id, name, photo_url, position, bio, portfolio, is_active')
-    .eq('salon_id', req.auth!.salon_id!)
-    .order('name');
+  const salonId = req.auth!.salon_id!;
+  const [{ data }, { data: rooms }] = await Promise.all([
+    supabase
+      .from('masters')
+      .select('id, salon_id, name, photo_url, position, bio, portfolio, is_active, default_room_id')
+      .eq('salon_id', salonId)
+      .order('name'),
+    supabase.from('rooms').select('id, name').eq('salon_id', salonId),
+  ]);
+  const roomNameById = new Map((rooms ?? []).map((room) => [room.id, room.name]));
   res.json(
     (data ?? []).map((master) => ({
       ...master,
       bio: master.bio ?? null,
+      default_room_id: master.default_room_id ?? null,
+      default_room_name: master.default_room_id
+        ? roomNameById.get(master.default_room_id) ?? null
+        : null,
       portfolio: normalizePortfolio(master.portfolio),
     }))
   );
 });
 
 router.post('/admin/masters', async (req: Request, res: Response) => {
-  const { name, photo_url, position, is_active, bio, portfolio } = req.body;
+  const salonId = req.auth!.salon_id!;
+  const { name, photo_url, position, is_active, bio, portfolio, default_room_id } = req.body;
+  let nextDefaultRoomId: string | null = null;
+  if (default_room_id !== undefined && default_room_id !== null && default_room_id !== '') {
+    const room = await resolveRoomId(salonId, default_room_id, { requireActive: false });
+    if (!room) {
+      res.status(400).json({ error: 'Кабінет не знайдено' });
+      return;
+    }
+    nextDefaultRoomId = room.id;
+  }
   const { data, error } = await supabase
     .from('masters')
     .insert({
-      salon_id: req.auth!.salon_id!,
+      salon_id: salonId,
       name,
       photo_url,
       position,
       is_active,
       bio: normalizeBio(bio),
       portfolio: normalizePortfolio(portfolio),
+      default_room_id: nextDefaultRoomId,
     })
     .select()
     .single();
@@ -2098,12 +2158,14 @@ router.post('/admin/masters', async (req: Request, res: Response) => {
   res.json({
     ...data,
     bio: data.bio ?? null,
+    default_room_id: data.default_room_id ?? null,
     portfolio: normalizePortfolio(data.portfolio),
   });
 });
 
 router.patch('/admin/masters/:id', async (req: Request, res: Response) => {
-  const { name, photo_url, position, is_active, bio, portfolio } = req.body;
+  const salonId = req.auth!.salon_id!;
+  const { name, photo_url, position, is_active, bio, portfolio, default_room_id } = req.body;
   const patch: Record<string, unknown> = {};
   if (name !== undefined) patch.name = name;
   if (photo_url !== undefined) patch.photo_url = photo_url;
@@ -2111,12 +2173,24 @@ router.patch('/admin/masters/:id', async (req: Request, res: Response) => {
   if (is_active !== undefined) patch.is_active = is_active;
   if (bio !== undefined) patch.bio = normalizeBio(bio);
   if (portfolio !== undefined) patch.portfolio = normalizePortfolio(portfolio);
+  if (default_room_id !== undefined) {
+    if (default_room_id === null || default_room_id === '') {
+      patch.default_room_id = null;
+    } else {
+      const room = await resolveRoomId(salonId, default_room_id, { requireActive: false });
+      if (!room) {
+        res.status(400).json({ error: 'Кабінет не знайдено' });
+        return;
+      }
+      patch.default_room_id = room.id;
+    }
+  }
 
   const { data, error } = await supabase
     .from('masters')
     .update(patch)
     .eq('id', req.params.id)
-    .eq('salon_id', req.auth!.salon_id!)
+    .eq('salon_id', salonId)
     .select()
     .single();
   if (error) {
@@ -2126,6 +2200,7 @@ router.patch('/admin/masters/:id', async (req: Request, res: Response) => {
   res.json({
     ...data,
     bio: data.bio ?? null,
+    default_room_id: data.default_room_id ?? null,
     portfolio: normalizePortfolio(data.portfolio),
   });
 });

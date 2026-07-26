@@ -1,5 +1,5 @@
 import { ChangeEvent, FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
-import { api, Master, MasterPayload, MasterPortfolioItem, ScheduleRow } from '../api';
+import { api, Master, MasterPayload, MasterPortfolioItem, Room, ScheduleRow } from '../api';
 import { Button } from '../components/ui';
 import { useLocale } from '../context/LocaleContext';
 
@@ -22,12 +22,14 @@ function emptyDraft(): MasterDraft {
     bio: '',
     portfolio: [],
     is_active: true,
+    default_room_id: null,
   };
 }
 
 export function MastersPage() {
   const { t } = useLocale();
   const [masters, setMasters] = useState<Master[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
   const [draft, setDraft] = useState<MasterDraft | null>(null);
   const [scheduleMaster, setScheduleMaster] = useState<Master | null>(null);
   const [loading, setLoading] = useState(false);
@@ -37,7 +39,12 @@ export function MastersPage() {
     setLoading(true);
     setError('');
     try {
-      setMasters(await api.get<Master[]>('/api/admin/masters'));
+      const [masterData, roomData] = await Promise.all([
+        api.get<Master[]>('/api/admin/masters'),
+        api.get<Room[]>('/api/admin/rooms').catch(() => [] as Room[]),
+      ]);
+      setMasters(masterData);
+      setRooms(roomData);
     } catch (err) {
       setError((err as { error?: string }).error ?? 'Не вдалось завантажити майстрів');
     } finally {
@@ -84,6 +91,8 @@ export function MastersPage() {
               <div className="text-sm text-gray-500">{master.position || 'Посада не вказана'}</div>
               <div className="text-sm mt-1">{master.is_active ? '✅ Активний' : '⛔ Неактивний'}</div>
               <div className="text-xs text-gray-400 mt-1">
+                Кабінет: {master.default_room_name || 'не задано'}
+                {' · '}
                 Портфоліо: {(master.portfolio ?? []).length ? `${master.portfolio.length} файл(ів)` : 'немає'}
               </div>
             </div>
@@ -101,6 +110,7 @@ export function MastersPage() {
                     bio: master.bio ?? '',
                     portfolio: master.portfolio ?? [],
                     is_active: master.is_active,
+                    default_room_id: master.default_room_id ?? null,
                   })
                 }
               >
@@ -120,6 +130,7 @@ export function MastersPage() {
       {draft && (
         <MasterForm
           draft={draft}
+          rooms={rooms}
           onClose={() => setDraft(null)}
           onSaved={() => {
             setDraft(null);
@@ -137,10 +148,12 @@ export function MastersPage() {
 
 function MasterForm({
   draft,
+  rooms,
   onClose,
   onSaved,
 }: {
   draft: MasterDraft;
+  rooms: Room[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -148,6 +161,7 @@ function MasterForm({
     ...draft,
     portfolio: draft.portfolio ?? [],
     bio: draft.bio ?? '',
+    default_room_id: draft.default_room_id ?? null,
   });
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -230,6 +244,7 @@ function MasterForm({
         position: form.position || null,
         bio: form.bio || null,
         is_active: form.is_active,
+        default_room_id: form.default_room_id || null,
         portfolio: (form.portfolio ?? [])
           .map((item) => ({
             type: item.type,
@@ -254,6 +269,28 @@ function MasterForm({
         {error && <div className="rounded-lg bg-red-50 border border-red-200 p-2 text-red-800 text-sm">{error}</div>}
         <Input label="Ім'я *" value={form.name} onChange={(name) => setForm({ ...form, name })} required />
         <Input label="Посада" value={form.position ?? ''} onChange={(position) => setForm({ ...form, position })} />
+
+        <label className="block">
+          <span className="text-sm text-gray-600">Кабінет за замовчуванням</span>
+          <select
+            value={form.default_room_id ?? ''}
+            onChange={(e) => setForm({ ...form, default_room_id: e.target.value || null })}
+            className="w-full border rounded-lg p-3 mt-1"
+          >
+            <option value="">Без кабінету</option>
+            {rooms.map((room) => (
+              <option key={room.id} value={room.id}>
+                {room.name}
+                {!room.is_active ? ' (неактивний)' : ''}
+              </option>
+            ))}
+          </select>
+          {!rooms.length && (
+            <span className="text-xs text-gray-500 mt-1 block">
+              Спочатку додайте кабінет на сторінці «Розклад».
+            </span>
+          )}
+        </label>
 
         <label className="block">
           <span className="text-sm text-gray-600">Про себе (необовʼязково)</span>
