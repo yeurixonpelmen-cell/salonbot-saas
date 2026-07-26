@@ -25,6 +25,7 @@ type ActivationCodeRow = {
   code: string;
   status: 'unused' | 'reserved' | 'redeemed' | 'revoked';
   reserved_email: string | null;
+  invite_email?: string | null;
   redeemed_at: string | null;
   salon_id: string | null;
   note: string | null;
@@ -109,8 +110,8 @@ export function SuperAdminPage() {
   const [newStaffEmail, setNewStaffEmail] = useState('');
   const [saving, setSaving] = useState(false);
   const [activationCodes, setActivationCodes] = useState<ActivationCodeRow[]>([]);
-  const [codeNote, setCodeNote] = useState('');
-  const [lastCreatedCodes, setLastCreatedCodes] = useState<string[]>([]);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [lastInvite, setLastInvite] = useState<{ email: string; code: string; emailSent: boolean; emailError?: string } | null>(null);
 
   async function loadSalons() {
     setLoading(true);
@@ -146,18 +147,34 @@ export function SuperAdminPage() {
     setSaving(true);
     setError('');
     setMessage('');
+    setLastInvite(null);
     try {
-      const result = await superApi<{ codes: ActivationCodeRow[] }>('/api/super/activation-codes', {
+      const result = await superApi<{
+        codes: ActivationCodeRow[];
+        email: string;
+        emailSent: boolean;
+        emailSkipped?: boolean;
+        emailError?: string;
+      }>('/api/super/activation-codes', {
         method: 'POST',
-        body: JSON.stringify({ note: codeNote || null, count: 1 }),
+        body: JSON.stringify({ email: inviteEmail }),
       });
-      const codes = result.codes.map((row) => row.code);
-      setLastCreatedCodes(codes);
-      setMessage(`Код створено. Скинь клієнту — 1 код = 1 салон`);
-      setCodeNote('');
+      const code = result.codes[0]?.code ?? '';
+      setLastInvite({
+        email: result.email,
+        code,
+        emailSent: result.emailSent,
+        emailError: result.emailError,
+      });
+      setMessage(
+        result.emailSent
+          ? `Код надіслано на ${result.email}`
+          : `Код створено, але лист не пішов${result.emailError ? `: ${result.emailError}` : ''}. Перевір RESEND_API_KEY.`
+      );
+      setInviteEmail('');
       await loadSalons();
     } catch (err) {
-      setError((err as { error?: string }).error ?? 'Не вдалось створити коди');
+      setError((err as { error?: string }).error ?? 'Не вдалось створити код');
     } finally {
       setSaving(false);
     }
@@ -329,7 +346,7 @@ export function SuperAdminPage() {
           <div>
             <h1 className="text-3xl font-bold">Super Admin</h1>
             <p className="text-gray-500 text-sm mt-1">
-              Ти даєш лише код. Салон сам заповнює назву, адресу, токен бота і свій email.
+              Вводиш email клієнта — код приходить йому на пошту. Салон далі налаштовує все сам.
             </p>
           </div>
           <div className="flex gap-2">
@@ -371,33 +388,37 @@ export function SuperAdminPage() {
         <section className="bg-white border rounded-2xl p-5 space-y-4">
           <h2 className="text-xl font-bold">Коди активації</h2>
           <p className="text-sm text-gray-500">
-            1. Згенеруй код → 2. Скинь клієнту в Telegram/email → 3. Клієнт на{' '}
-            <code>/onboarding</code> сам вводить код, свій email, пароль і налаштовує салон.
-            Токен бота й адресу ти не бачиш і не вводиш.
+            Введи email клієнта → система надішле код і посилання на <code>/onboarding</code>.
+            Клієнт відкриває лист, вводить той самий email + пароль і сам налаштовує салон.
           </p>
           <form onSubmit={createActivationCodes} className="grid gap-3 md:grid-cols-3">
             <label className="block md:col-span-2">
-              <span className="text-sm text-gray-600">Кому код (email / ім’я — лише для тебе)</span>
+              <span className="text-sm text-gray-600">Email клієнта *</span>
               <input
+                type="email"
+                required
                 className="w-full border rounded-lg p-3 mt-1"
-                value={codeNote}
-                onChange={(e) => setCodeNote(e.target.value)}
-                placeholder="marina@clinic.com · Beauty Room"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="marina@clinic.com"
               />
             </label>
             <button type="submit" disabled={saving} className="md:col-span-1 py-3 rounded-lg bg-emerald-600 text-white font-medium self-end">
-              {saving ? 'Створення…' : 'Згенерувати 1 код'}
+              {saving ? 'Надсилання…' : 'Надіслати код на email'}
             </button>
           </form>
-          {!!lastCreatedCodes.length && (
+          {lastInvite && (
             <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm space-y-1">
-              <div className="font-semibold">Нові коди (скинь клієнту):</div>
-              {lastCreatedCodes.map((code) => (
-                <div key={code} className="font-mono text-base">{code}</div>
-              ))}
-              <div className="text-gray-600 pt-1">
-                Посилання: <code>{window.location.origin}/onboarding</code>
+              <div className="font-semibold">
+                {lastInvite.emailSent ? 'Лист надіслано' : 'Код створено, лист не пішов'}
               </div>
+              <div>
+                Email: <b>{lastInvite.email}</b>
+              </div>
+              <div className="font-mono">Код (запасний): {lastInvite.code}</div>
+              {!lastInvite.emailSent && lastInvite.emailError && (
+                <div className="text-amber-800">{lastInvite.emailError}</div>
+              )}
             </div>
           )}
           <div className="grid gap-2 max-h-72 overflow-auto">
@@ -407,8 +428,8 @@ export function SuperAdminPage() {
                   <div className="font-mono font-semibold">{row.code}</div>
                   <div className="text-sm text-gray-500">
                     {row.status}
-                    {row.reserved_email ? ` · ${row.reserved_email}` : ''}
-                    {row.note ? ` · ${row.note}` : ''}
+                    {row.invite_email ? ` · надіслано: ${row.invite_email}` : ''}
+                    {row.reserved_email ? ` · активує: ${row.reserved_email}` : ''}
                   </div>
                 </div>
                 {(row.status === 'unused' || row.status === 'reserved') && (
@@ -424,7 +445,7 @@ export function SuperAdminPage() {
               </div>
             ))}
             {!activationCodes.length && !loading && (
-              <div className="text-gray-500 text-sm">Кодів ще немає — згенеруй перший вище.</div>
+              <div className="text-gray-500 text-sm">Кодів ще немає — надішли перший вище.</div>
             )}
           </div>
         </section>

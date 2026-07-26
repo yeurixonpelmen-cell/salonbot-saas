@@ -645,7 +645,7 @@ router.post('/onboarding/claim', onboardingLimiter, async (req: Request, res: Re
 
   const { data: codeRow, error: codeError } = await supabase
     .from('activation_codes')
-    .select('id, code, status, reserved_email, password_hash')
+    .select('id, code, status, reserved_email, invite_email, password_hash')
     .ilike('code', code)
     .maybeSingle();
 
@@ -655,6 +655,14 @@ router.post('/onboarding/claim', onboardingLimiter, async (req: Request, res: Re
   }
   if (codeRow.status === 'redeemed' || codeRow.status === 'revoked') {
     res.status(410).json({ error: 'Цей код уже використано або скасовано' });
+    return;
+  }
+
+  const inviteEmail = normalizeEmail(codeRow.invite_email ?? '');
+  if (inviteEmail && inviteEmail !== email) {
+    res.status(403).json({
+      error: `Цей код надіслано на інший email. Увійдіть з адресою, на яку прийшов лист`,
+    });
     return;
   }
 

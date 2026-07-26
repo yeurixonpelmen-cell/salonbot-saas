@@ -9,7 +9,7 @@ import {
   hashPassword,
   normalizeEmail,
 } from '../utils/password';
-import { sendStaffInviteEmail } from '../utils/email';
+import { sendActivationCodeEmail, sendStaffInviteEmail } from '../utils/email';
 
 const router = Router();
 
@@ -50,7 +50,7 @@ function generateActivationCode(): string {
 router.get('/activation-codes', async (_req: Request, res: Response) => {
   const { data, error } = await supabase
     .from('activation_codes')
-    .select('id, code, status, reserved_email, redeemed_at, salon_id, note, created_at')
+    .select('id, code, status, reserved_email, invite_email, redeemed_at, salon_id, note, created_at')
     .order('created_at', { ascending: false })
     .limit(100);
   if (error) {
@@ -61,33 +61,54 @@ router.get('/activation-codes', async (_req: Request, res: Response) => {
 });
 
 router.post('/activation-codes', async (req: Request, res: Response) => {
+  const email = normalizeEmail(String(req.body?.email ?? req.body?.inviteEmail ?? ''));
   const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
-  const countRaw = Number(req.body?.count ?? 1);
-  const count = Number.isFinite(countRaw) ? Math.min(Math.max(Math.floor(countRaw), 1), 20) : 1;
 
-  const created: { id: string; code: string; status: string; note: string | null; created_at: string }[] = [];
-  for (let i = 0; i < count; i += 1) {
-    let inserted = null;
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      const code = generateActivationCode();
-      const { data, error } = await supabase
-        .from('activation_codes')
-        .insert({ code, note: note || null, status: 'unused' })
-        .select('id, code, status, note, created_at')
-        .single();
-      if (!error && data) {
-        inserted = data;
-        break;
-      }
-    }
-    if (!inserted) {
-      res.status(500).json({ error: 'Не вдалось згенерувати код', created });
-      return;
-    }
-    created.push(inserted);
+  if (!email || !email.includes('@')) {
+    res.status(400).json({ error: 'Вкажіть email клієнта — код піде саме туди' });
+    return;
   }
 
-  res.status(201).json({ codes: created });
+  let inserted: {
+    id: string;
+    code: string;
+    status: string;
+    invite_email: string | null;
+    note: string | null;
+    created_at: string;
+  } | null = null;
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const code = generateActivationCode();
+    const { data, error } = await supabase
+      .from('activation_codes')
+      .insert({
+        code,
+        status: 'unused',
+        invite_email: email,
+        note: note || email,
+      })
+      .select('id, code, status, invite_email, note, created_at')
+      .single();
+    if (!error && data) {
+      inserted = data;
+      break;
+    }
+  }
+
+  if (!inserted) {
+    res.status(500).json({ error: 'Не вдалось згенерувати код' });
+    return;
+  }
+
+  const mail = await sendActivationCodeEmail({ to: email, code: inserted.code });
+  res.status(201).json({
+    codes: [inserted],
+    email,
+    emailSent: mail.sent,
+    emailSkipped: mail.skipped ?? false,
+    emailError: mail.error,
+  });
 });
 
 router.patch('/activation-codes/:id', async (req: Request, res: Response) => {
@@ -101,7 +122,7 @@ router.patch('/activation-codes/:id', async (req: Request, res: Response) => {
     .update({ status: 'revoked' })
     .eq('id', req.params.id)
     .in('status', ['unused', 'reserved'])
-    .select('id, code, status, reserved_email, redeemed_at, salon_id, note, created_at')
+    .select('id, code, status, reserved_email, invite_email, redeemed_at, salon_id, note, created_at')
     .maybeSingle();
 
   if (error) {
