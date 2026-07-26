@@ -27,13 +27,13 @@ export default function App() {
       <Route path="/onboarding" element={<OnboardingPage />} />
       <Route path="/super/login" element={<SuperLoginPage />} />
       <Route path="/super" element={<SuperAdminPage />} />
+      <Route path="/super/finance" element={<FinancePage />} />
       <Route element={<ProtectedRoute />}>
         <Route path="/" element={<SchedulePage />} />
         <Route path="/clients" element={<ClientsPage />} />
         <Route path="/clients/:id" element={<ClientDetailsPage />} />
         <Route path="/masters" element={<MastersPage />} />
         <Route path="/services" element={<ServicesPage />} />
-        <Route path="/finance" element={<FinancePage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

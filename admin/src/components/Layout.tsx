@@ -7,11 +7,10 @@ const nav = [
   { to: '/clients', labelKey: 'nav_clients', icon: 'users' },
   { to: '/masters', labelKey: 'nav_masters', icon: 'user' },
   { to: '/services', labelKey: 'nav_services', icon: 'spark' },
-  { to: '/finance', labelKey: 'nav_finance', icon: 'wallet' },
   { to: '/settings', labelKey: 'nav_settings', icon: 'gear' },
 ] as const;
 
-function NavIcon({ name }: { name: (typeof nav)[number]['icon'] | 'logout' | 'wallet' }) {
+function NavIcon({ name }: { name: (typeof nav)[number]['icon'] | 'logout' }) {
   const common = {
     width: 18,
     height: 18,
@@ -51,13 +50,6 @@ function NavIcon({ name }: { name: (typeof nav)[number]['icon'] | 'logout' | 'wa
       return (
         <svg {...common}>
           <path d="M12 3l1.6 5.2L19 10l-5.4 1.8L12 17l-1.6-5.2L5 10l5.4-1.8L12 3z" />
-        </svg>
-      );
-    case 'wallet':
-      return (
-        <svg {...common}>
-          <rect x="3" y="6" width="18" height="13" rx="2" />
-          <path d="M3 10h18M16 14h2" />
         </svg>
       );
     case 'gear':

@@ -518,4 +518,259 @@ router.delete('/salons/:id', async (req: Request, res: Response) => {
   res.json({ ok: true, id: salonId, name_uk: salon.name_uk });
 });
 
+// ─── Platform owner FOP ledger ────────────────────────────
+
+const FINANCE_KINDS = ['income', 'expense'] as const;
+const FINANCE_METHODS = ['iban', 'cash', 'card', 'other'] as const;
+
+function parseMoneyAmount(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : Number(String(value ?? '').replace(',', '.'));
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n * 100) / 100;
+}
+
+function mapPlatformFinanceEntry(row: any) {
+  const salon = Array.isArray(row.salons) ? row.salons[0] : row.salons;
+  return {
+    id: row.id,
+    entry_date: row.entry_date,
+    kind: row.kind,
+    amount: Number(row.amount),
+    currency: row.currency ?? 'UAH',
+    payment_method: row.payment_method,
+    client_name: row.client_name ?? null,
+    description: row.description ?? '',
+    salon_id: row.salon_id ?? null,
+    salon_name: salon?.name_uk ?? null,
+    act_number: row.act_number ?? null,
+    notes: row.notes ?? null,
+    created_at: row.created_at,
+  };
+}
+
+router.get('/finance', async (req: Request, res: Response) => {
+  const from = typeof req.query.from === 'string' ? req.query.from.trim() : '';
+  const to = typeof req.query.to === 'string' ? req.query.to.trim() : '';
+  const kind = typeof req.query.kind === 'string' ? req.query.kind.trim() : '';
+  const method = typeof req.query.method === 'string' ? req.query.method.trim() : '';
+  const salonId = typeof req.query.salonId === 'string' ? req.query.salonId.trim() : '';
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+
+  let query = supabase
+    .from('finance_entries')
+    .select('*, salons(name_uk)')
+    .order('entry_date', { ascending: false })
+    .order('created_at', { ascending: false });
+
+  if (from) query = query.gte('entry_date', from);
+  if (to) query = query.lte('entry_date', to);
+  if (kind && FINANCE_KINDS.includes(kind as (typeof FINANCE_KINDS)[number])) {
+    query = query.eq('kind', kind);
+  }
+  if (method && FINANCE_METHODS.includes(method as (typeof FINANCE_METHODS)[number])) {
+    query = query.eq('payment_method', method);
+  }
+  if (salonId) query = query.eq('salon_id', salonId);
+
+  const { data, error } = await query.limit(2000);
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+
+  let entries = (data ?? []).map(mapPlatformFinanceEntry);
+  if (search) {
+    const q = search.toLocaleLowerCase('uk');
+    entries = entries.filter((entry) => {
+      const hay = [
+        entry.client_name,
+        entry.description,
+        entry.act_number,
+        entry.notes,
+        entry.salon_name,
+        entry.payment_method,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLocaleLowerCase('uk');
+      return hay.includes(q);
+    });
+  }
+
+  let income_sum = 0;
+  let expense_sum = 0;
+  for (const entry of entries) {
+    if (entry.kind === 'income') income_sum += entry.amount;
+    else expense_sum += entry.amount;
+  }
+  income_sum = Math.round(income_sum * 100) / 100;
+  expense_sum = Math.round(expense_sum * 100) / 100;
+
+  res.json({
+    entries,
+    summary: {
+      count: entries.length,
+      income_sum,
+      expense_sum,
+      net: Math.round((income_sum - expense_sum) * 100) / 100,
+      tax_5pct: Math.round(income_sum * 0.05 * 100) / 100,
+    },
+  });
+});
+
+router.post('/finance', async (req: Request, res: Response) => {
+  const {
+    entry_date,
+    kind,
+    amount,
+    payment_method,
+    client_name,
+    description,
+    salon_id,
+    act_number,
+    notes,
+  } = req.body;
+
+  if (!entry_date || typeof entry_date !== 'string') {
+    res.status(400).json({ error: 'Дата обовʼязкова' });
+    return;
+  }
+  if (!FINANCE_KINDS.includes(kind)) {
+    res.status(400).json({ error: 'Тип має бути income або expense' });
+    return;
+  }
+  const money = parseMoneyAmount(amount);
+  if (money === null) {
+    res.status(400).json({ error: 'Некоректна сума' });
+    return;
+  }
+  const method = FINANCE_METHODS.includes(payment_method) ? payment_method : 'iban';
+
+  let nextSalonId: string | null = null;
+  if (salon_id) {
+    const { data: salon } = await supabase
+      .from('salons')
+      .select('id')
+      .eq('id', salon_id)
+      .maybeSingle();
+    if (!salon) {
+      res.status(400).json({ error: 'Салон не знайдено' });
+      return;
+    }
+    nextSalonId = salon.id;
+  }
+
+  const { data, error } = await supabase
+    .from('finance_entries')
+    .insert({
+      salon_id: nextSalonId,
+      entry_date,
+      kind,
+      amount: money,
+      payment_method: method,
+      client_name: typeof client_name === 'string' ? client_name.trim() || null : null,
+      description: typeof description === 'string' ? description.trim() : '',
+      act_number: typeof act_number === 'string' ? act_number.trim() || null : null,
+      notes: typeof notes === 'string' ? notes.trim() || null : null,
+    })
+    .select('*, salons(name_uk)')
+    .single();
+
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+  res.status(201).json(mapPlatformFinanceEntry(data));
+});
+
+router.patch('/finance/:id', async (req: Request, res: Response) => {
+  const patch: Record<string, unknown> = {};
+
+  if (req.body.entry_date !== undefined) {
+    if (typeof req.body.entry_date !== 'string' || !req.body.entry_date) {
+      res.status(400).json({ error: 'Некоректна дата' });
+      return;
+    }
+    patch.entry_date = req.body.entry_date;
+  }
+  if (req.body.kind !== undefined) {
+    if (!FINANCE_KINDS.includes(req.body.kind)) {
+      res.status(400).json({ error: 'Тип має бути income або expense' });
+      return;
+    }
+    patch.kind = req.body.kind;
+  }
+  if (req.body.amount !== undefined) {
+    const money = parseMoneyAmount(req.body.amount);
+    if (money === null) {
+      res.status(400).json({ error: 'Некоректна сума' });
+      return;
+    }
+    patch.amount = money;
+  }
+  if (req.body.payment_method !== undefined) {
+    if (!FINANCE_METHODS.includes(req.body.payment_method)) {
+      res.status(400).json({ error: 'Некоректний спосіб оплати' });
+      return;
+    }
+    patch.payment_method = req.body.payment_method;
+  }
+  if (req.body.client_name !== undefined) {
+    patch.client_name =
+      typeof req.body.client_name === 'string' ? req.body.client_name.trim() || null : null;
+  }
+  if (req.body.description !== undefined) {
+    patch.description = typeof req.body.description === 'string' ? req.body.description.trim() : '';
+  }
+  if (req.body.act_number !== undefined) {
+    patch.act_number =
+      typeof req.body.act_number === 'string' ? req.body.act_number.trim() || null : null;
+  }
+  if (req.body.notes !== undefined) {
+    patch.notes = typeof req.body.notes === 'string' ? req.body.notes.trim() || null : null;
+  }
+  if (req.body.salon_id !== undefined) {
+    if (!req.body.salon_id) {
+      patch.salon_id = null;
+    } else {
+      const { data: salon } = await supabase
+        .from('salons')
+        .select('id')
+        .eq('id', req.body.salon_id)
+        .maybeSingle();
+      if (!salon) {
+        res.status(400).json({ error: 'Салон не знайдено' });
+        return;
+      }
+      patch.salon_id = salon.id;
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('finance_entries')
+    .update(patch)
+    .eq('id', req.params.id)
+    .select('*, salons(name_uk)')
+    .maybeSingle();
+
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+  if (!data) {
+    res.status(404).json({ error: 'Запис не знайдено' });
+    return;
+  }
+  res.json(mapPlatformFinanceEntry(data));
+});
+
+router.delete('/finance/:id', async (req: Request, res: Response) => {
+  const { error } = await supabase.from('finance_entries').delete().eq('id', req.params.id);
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+  res.json({ ok: true });
+});
+
 export default router;

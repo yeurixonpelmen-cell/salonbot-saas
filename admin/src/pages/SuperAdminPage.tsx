@@ -391,6 +391,9 @@ export function SuperAdminPage() {
             </p>
           </div>
           <div className="flex gap-2">
+            <Link to="/super/finance" className="px-3 py-2 rounded-lg border bg-white text-sm font-medium">
+              ФОП / каса
+            </Link>
             <Link to="/login" className="px-3 py-2 rounded-lg border bg-white text-sm">Адмінка салону</Link>
             <button
               type="button"
