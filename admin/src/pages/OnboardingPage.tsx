@@ -171,7 +171,7 @@ export function OnboardingPage() {
       <div className="w-full max-w-2xl space-y-4">
         <div className="bg-white border rounded-2xl p-5">
           <h1 className="text-2xl font-bold">Підключення салону</h1>
-          <p className="text-gray-500">Крок {step} з 4 · лише через email і код активації</p>
+          <p className="text-gray-500">Крок {step} з 4</p>
           <div className="mt-4 h-2 bg-gray-100 rounded-full overflow-hidden">
             <div className="h-full bg-blue-600" style={{ width: `${((step + 1) / 5) * 100}%` }} />
           </div>
