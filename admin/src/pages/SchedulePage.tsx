@@ -358,6 +358,18 @@ export function SchedulePage() {
             await updateBooking(selected.id, payload);
             setSelected(null);
           }}
+          onRemove={async () => {
+            setError('');
+            try {
+              await api.delete(`/api/admin/bookings/${selected.id}`);
+              setBookings((current) => current.filter((item) => item.id !== selected.id));
+              setSelected(null);
+              void refetch().catch(console.error);
+            } catch (err) {
+              setError((err as { error?: string }).error ?? 'Не вдалось прибрати запис');
+              throw err;
+            }
+          }}
         />
       )}
       {addDraft && (
@@ -398,7 +410,7 @@ export function SchedulePage() {
 }
 
 function BookingDrawer({
-  booking, masters, services, rooms, timeZone, slotMinutes = 30, onClose, onSave,
+  booking, masters, services, rooms, timeZone, slotMinutes = 30, onClose, onSave, onRemove,
 }: {
   booking: Booking;
   masters: Master[];
@@ -408,6 +420,7 @@ function BookingDrawer({
   slotMinutes?: GridSlotMinutes;
   onClose: () => void;
   onSave: (payload: UpdateBookingPayload) => Promise<void>;
+  onRemove: () => Promise<void>;
 }) {
   const initialDatetime = toDateTimeLocalValue(booking.datetime, timeZone);
   const [form, setForm] = useState({
@@ -422,7 +435,21 @@ function BookingDrawer({
     datetime: initialDatetime,
   });
   const [saving, setSaving] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [formError, setFormError] = useState('');
+
+  async function removeBooking() {
+    if (!confirm(`Прибрати запис клієнта «${booking.client_name}»? Слот знову стане вільним.`)) return;
+    setRemoving(true);
+    setFormError('');
+    try {
+      await onRemove();
+    } catch (err) {
+      setFormError((err as { error?: string }).error ?? 'Не вдалось прибрати запис');
+    } finally {
+      setRemoving(false);
+    }
+  }
 
   function isWorkingHours(datetimeLocal: string): boolean {
     const time = datetimeLocal.split('T')[1]?.slice(0, 5);
@@ -514,8 +541,11 @@ function BookingDrawer({
           {form.needs_attention && <label className="full">Причина<input value={form.attention_reason} onChange={(e) => setForm({ ...form, attention_reason: e.target.value })} /></label>}
           <label className="full">Нотатки<textarea rows={5} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Ctrl+Enter — зберегти" /></label>
         </div>
-        <div className="drawer-actions">
-          <Button type="submit" disabled={saving}>{saving ? 'Збереження…' : 'Зберегти зміни'}</Button>
+        <div className="drawer-actions drawer-actions-split">
+          <Button type="button" variant="danger" disabled={saving || removing} onClick={() => void removeBooking()}>
+            {removing ? 'Видалення…' : 'Прибрати запис'}
+          </Button>
+          <Button type="submit" disabled={saving || removing}>{saving ? 'Збереження…' : 'Зберегти зміни'}</Button>
         </div>
       </form>
     </Drawer>

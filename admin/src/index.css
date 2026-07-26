@@ -621,6 +621,8 @@ html[data-theme='dark'] .view-toggle button.active {
 .client-summary p { margin: 0; color: var(--muted); font-size: 11px; }
 .client-summary a { color: var(--accent); font-size: 11px; font-weight: 700; }
 .drawer-actions { position: sticky; bottom: -20px; margin: 20px -20px -20px; padding: 14px 20px; border-top: 1px solid #e8ebf0; background: #fff; text-align: right; }
+.drawer-actions-split { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; text-align: left; }
+.drawer-actions-split > :last-child { margin-left: auto; }
 .client-results { position: absolute; z-index: 5; top: 62px; left: 0; right: 0; display: grid; overflow: hidden; border: 1px solid #dce1e9; border-radius: 8px; background: #fff; box-shadow: 0 10px 22px #18243c1c; }
 .form-grid label:has(.client-results) { position: relative; }
 .client-results button {

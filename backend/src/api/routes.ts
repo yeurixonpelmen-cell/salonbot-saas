@@ -1937,6 +1937,34 @@ router.patch('/admin/bookings/:id', async (req: Request, res: Response) => {
   res.json(withConflictFlags([data])[0]);
 });
 
+router.delete('/admin/bookings/:id', async (req: Request, res: Response) => {
+  const salonId = req.auth!.salon_id!;
+  const { data: existing } = await supabase
+    .from('bookings')
+    .select('id')
+    .eq('id', req.params.id)
+    .eq('salon_id', salonId)
+    .maybeSingle();
+  if (!existing) {
+    res.status(404).json({ error: 'Booking not found' });
+    return;
+  }
+
+  const { error } = await supabase
+    .from('bookings')
+    .delete()
+    .eq('id', existing.id)
+    .eq('salon_id', salonId);
+
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+
+  publishSalonBookingsChanged(salonId);
+  res.json({ ok: true });
+});
+
 // Rooms CRUD
 router.get('/admin/rooms', async (req: Request, res: Response) => {
   const { data, error } = await supabase
