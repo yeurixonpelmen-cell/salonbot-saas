@@ -745,6 +745,50 @@ router.post('/onboarding/claim', onboardingLimiter, async (req: Request, res: Re
   res.json({ onboardingToken, email, code: reserved.code });
 });
 
+router.post('/onboarding/password', onboardingLimiter, async (req: Request, res: Response) => {
+  const onboardingToken = String(req.body?.onboardingToken ?? '');
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+
+  if (password.length < 8) {
+    res.status(400).json({ error: 'Пароль має бути щонайменше 8 символів' });
+    return;
+  }
+
+  const session = verifyOnboardingJwt(onboardingToken);
+  if (!session) {
+    res.status(401).json({ error: 'Сесія онбордингу закінчилась. Почніть знову з коду та email' });
+    return;
+  }
+
+  const { data: codeRow, error } = await supabase
+    .from('activation_codes')
+    .select('id, status, reserved_email')
+    .eq('id', session.code_id)
+    .maybeSingle();
+
+  if (error || !codeRow) {
+    res.status(404).json({ error: 'Код активації не знайдено' });
+    return;
+  }
+  if (codeRow.status !== 'reserved' || normalizeEmail(codeRow.reserved_email ?? '') !== session.email) {
+    res.status(403).json({ error: 'Код не зарезервовано на цей email' });
+    return;
+  }
+
+  const { error: updateError } = await supabase
+    .from('activation_codes')
+    .update({ password_hash: hashPassword(password) })
+    .eq('id', codeRow.id)
+    .eq('status', 'reserved');
+
+  if (updateError) {
+    res.status(500).json({ error: updateError.message });
+    return;
+  }
+
+  res.json({ ok: true });
+});
+
 router.post('/onboarding/verify-bot', onboardingLimiter, async (req: Request, res: Response) => {
   const { token } = req.body;
   try {

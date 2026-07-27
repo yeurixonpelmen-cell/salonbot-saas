@@ -27,6 +27,9 @@ export function OnboardingPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [newPassword2, setNewPassword2] = useState('');
 
   useEffect(() => {
     if (onboardingToken && ownerEmail && step === 0) setStep(1);
@@ -61,6 +64,36 @@ export function OnboardingPage() {
       setStep(1);
     } catch (err) {
       setError((err as { error?: string }).error ?? 'Не вдалось активувати код');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function updateOnboardingPassword(e: FormEvent) {
+    e.preventDefault();
+    if (newPassword.length < 8) {
+      setError('Пароль має бути щонайменше 8 символів');
+      return;
+    }
+    if (newPassword !== newPassword2) {
+      setError('Паролі не збігаються');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    setMessage('');
+    try {
+      await api.post('/api/onboarding/password', {
+        onboardingToken,
+        password: newPassword,
+      });
+      setPassword(newPassword);
+      setNewPassword('');
+      setNewPassword2('');
+      setChangingPassword(false);
+      setMessage('Пароль оновлено');
+    } catch (err) {
+      setError((err as { error?: string }).error ?? 'Не вдалось змінити пароль');
     } finally {
       setLoading(false);
     }
@@ -186,12 +219,12 @@ export function OnboardingPage() {
             <form onSubmit={claimCode} className="space-y-4">
               <h2 className="text-xl font-semibold">Крок 0 — Код і email</h2>
               <p className="text-gray-500 text-sm">
-                Один код = один салон. Пароль потрібен, щоб потім заходити в адмінку (email + цей пароль).
+                Один код = один салон. Пароль потрібен, щоб потім заходити в адмін-панель (email + цей пароль).
               </p>
               <Input label="Код активації *" value={activationCode} onChange={setActivationCode} required />
               <Input label="Email власника *" value={email} onChange={setEmail} type="email" required />
               <Input
-                label="Пароль для входу в адмінку (мін. 8 символів) *"
+                label="Пароль для входу в адмін-панель (мін. 8 символів) *"
                 value={password}
                 onChange={setPassword}
                 type="password"
@@ -221,7 +254,47 @@ export function OnboardingPage() {
             </form>
           )}
 
-          {step === 1 && (
+          {step === 1 && changingPassword && (
+            <form onSubmit={updateOnboardingPassword} className="space-y-4">
+              <h2 className="text-xl font-semibold">Змінити пароль</h2>
+              <p className="text-sm text-gray-500">Власник: {ownerEmail}</p>
+              <Input
+                label="Новий пароль (мін. 8 символів) *"
+                value={newPassword}
+                onChange={setNewPassword}
+                type="password"
+                required
+              />
+              <Input
+                label="Повторіть пароль *"
+                value={newPassword2}
+                onChange={setNewPassword2}
+                type="password"
+                required
+              />
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-60"
+              >
+                {loading ? 'Збереження…' : 'Зберегти пароль'}
+              </button>
+              <button
+                type="button"
+                className="w-full py-2 text-sm text-gray-600"
+                onClick={() => {
+                  setChangingPassword(false);
+                  setNewPassword('');
+                  setNewPassword2('');
+                  setError('');
+                }}
+              >
+                Назад до кроку 1
+              </button>
+            </form>
+          )}
+
+          {step === 1 && !changingPassword && (
             <SalonInfoStep
               ownerEmail={ownerEmail}
               nameUk={nameUk}
@@ -233,6 +306,7 @@ export function OnboardingPage() {
               logoUrl={logoUrl}
               uploadLogo={uploadLogo}
               loading={loading}
+              onChangePassword={() => setChangingPassword(true)}
               onNext={() => setStep(2)}
             />
           )}
@@ -288,6 +362,7 @@ function SalonInfoStep({
   logoUrl,
   uploadLogo,
   loading,
+  onChangePassword,
   onNext,
 }: {
   ownerEmail: string;
@@ -300,6 +375,7 @@ function SalonInfoStep({
   logoUrl: string;
   uploadLogo: (e: ChangeEvent<HTMLInputElement>) => void;
   loading: boolean;
+  onChangePassword: () => void;
   onNext: () => void;
 }) {
   function submit(e: FormEvent) {
@@ -310,7 +386,12 @@ function SalonInfoStep({
   return (
     <form onSubmit={submit} className="space-y-4">
       <h2 className="text-xl font-semibold">Крок 1 — Інформація про салон</h2>
-      <p className="text-sm text-gray-500">Власник: {ownerEmail}</p>
+      <p className="text-sm text-gray-500">
+        Власник: {ownerEmail}{' '}
+        <button type="button" className="text-blue-600 underline" onClick={onChangePassword}>
+          Змінити пароль
+        </button>
+      </p>
       <Input label="Назва (укр) *" value={nameUk} onChange={setNameUk} required />
       <Input label="Назва (англ)" value={nameEn} onChange={setNameEn} />
       <Input label="Адреса" value={address} onChange={setAddress} />
@@ -356,7 +437,7 @@ function BotStep({
     <div className="space-y-4">
       <h2 className="text-xl font-semibold">Крок 2 — Telegram-бот салону</h2>
       <p className="text-sm text-gray-500">
-        Створіть бота в @BotFather і вставте токен. Це бот для клієнтів салону, не логін адмінки.
+        Створіть бота в @BotFather і вставте токен. Це бот для клієнтів салону, не логін адмін-панелі.
       </p>
       <Input label="Токен бота *" value={rawBotToken} onChange={setRawBotToken} required />
       <button
@@ -449,10 +530,10 @@ function DoneStep({
     <div className="space-y-4 text-center">
       <h2 className="text-xl font-semibold">Салон підключено</h2>
       <p className="text-gray-600">
-        Бот {botUsername ? `@${botUsername}` : 'готовий'}. Вхід в адмінку: <b>{email}</b>
+        Бот {botUsername ? `@${botUsername}` : 'готовий'}. Вхід в адмін-панель: <b>{email}</b>
       </p>
       <button type="button" onClick={onAdmin} className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium">
-        Перейти в адмінку
+        Перейти в адмін-панель
       </button>
     </div>
   );

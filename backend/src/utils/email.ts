@@ -107,9 +107,9 @@ export async function sendStaffInviteEmail(input: StaffInviteEmailInput): Promis
     'SalonBot <onboarding@resend.dev>';
   const loginUrl = adminLoginUrl();
 
-  const subject = `Доступ до адмінки: ${input.salonName}`;
+  const subject = `Доступ до адмін-панелі: ${input.salonName}`;
   const text = [
-    `Вам відкрито доступ до адмінки «${input.salonName}».`,
+    `Вам відкрито доступ до адмін-панелі «${input.salonName}».`,
     '',
     `Вхід: ${loginUrl}`,
     `Email: ${input.to}`,
@@ -120,7 +120,7 @@ export async function sendStaffInviteEmail(input: StaffInviteEmailInput): Promis
 
   const html = `
     <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111">
-      <p>Вам відкрито доступ до адмінки <b>${escapeHtml(input.salonName)}</b>.</p>
+      <p>Вам відкрито доступ до адмін-панелі <b>${escapeHtml(input.salonName)}</b>.</p>
       <p>
         <b>Вхід:</b> <a href="${escapeHtml(loginUrl)}">${escapeHtml(loginUrl)}</a><br/>
         <b>Email:</b> ${escapeHtml(input.to)}<br/>

@@ -394,7 +394,7 @@ export function SuperAdminPage() {
             <Link to="/super/finance" className="px-3 py-2 rounded-lg border bg-white text-sm font-medium">
               ФОП / каса
             </Link>
-            <Link to="/login" className="px-3 py-2 rounded-lg border bg-white text-sm">Адмінка салону</Link>
+            <Link to="/login" className="px-3 py-2 rounded-lg border bg-white text-sm">Адмін-панель салону</Link>
             <button
               type="button"
               className="px-3 py-2 rounded-lg border bg-white text-sm"
@@ -622,7 +622,7 @@ export function SuperAdminPage() {
 
             {peopleTab === 'staff' ? (
               <div className="space-y-2">
-                <p className="text-sm text-gray-500">Email для входу в адмінку. На тариф не впливають.</p>
+                <p className="text-sm text-gray-500">Email для входу в адмін-панель. На тариф не впливають.</p>
                 <form onSubmit={addStaff} className="flex flex-wrap gap-2">
                   <input
                     className="border rounded-lg p-3 flex-1 min-w-[220px]"
