@@ -1009,14 +1009,23 @@ router.post('/onboarding/complete', onboardingLimiter, async (req: Request, res:
 router.use('/admin', adminLimiter, authMiddleware);
 
 const SALON_SETTINGS_SELECT =
-  'id, name_uk, name_en, address, logo_url, bot_username, admin_chat_id, timezone, language, reminders_enabled, review_request_enabled, require_booking_confirmation, google_maps_url';
+  'id, name_uk, name_en, address, logo_url, bot_username, admin_chat_id, timezone, language, reminders_enabled, review_request_enabled, require_booking_confirmation, google_maps_url, is_active';
 
 router.get('/admin/salon', async (req: Request, res: Response) => {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('salons')
     .select(SALON_SETTINGS_SELECT)
     .eq('id', req.auth!.salon_id!)
-    .single();
+    .maybeSingle();
+
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+  if (!data || data.is_active === false) {
+    res.status(401).json({ error: 'Салон видалено або вимкнено. Увійдіть знову.' });
+    return;
+  }
 
   res.json(data);
 });

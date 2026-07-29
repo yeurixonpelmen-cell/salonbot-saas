@@ -67,6 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   function logout() {
     clearToken();
     setIsAuthenticated(false);
+    window.location.href = '/login';
   }
 
   function refreshAuth() {

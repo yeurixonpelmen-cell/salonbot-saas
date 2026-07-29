@@ -1,11 +1,12 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { clearToken } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useLocale } from '../context/LocaleContext';
 import { Button, Input } from '../components/ui';
 
 export function LoginPage() {
-  const { loginWithEmail, isAuthenticated } = useAuth();
+  const { loginWithEmail, refreshAuth } = useAuth();
   const { t, lang, setLang } = useLocale();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
@@ -13,9 +14,12 @@ export function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Always show login form — drop any stale session (deleted salon / restored tab).
   useEffect(() => {
-    if (isAuthenticated) navigate('/');
-  }, [isAuthenticated, navigate]);
+    clearToken();
+    refreshAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on first open of /login
+  }, []);
 
   async function submitEmail(event: FormEvent) {
     event.preventDefault();
@@ -45,14 +49,34 @@ export function LoginPage() {
 
         {error && <div className="notice-error" style={{ textAlign: 'left', marginBottom: 12 }}>{error}</div>}
 
-        <form onSubmit={submitEmail} className="form-grid" style={{ gridTemplateColumns: '1fr', textAlign: 'left' }}>
+        <form
+          onSubmit={submitEmail}
+          className="form-grid"
+          style={{ gridTemplateColumns: '1fr', textAlign: 'left' }}
+          autoComplete="on"
+        >
           <label className="full">
             {t('login_email')}
-            <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Input
+              type="email"
+              name="username"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="username"
+              inputMode="email"
+            />
           </label>
           <label className="full">
             {t('login_password')}
-            <Input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+            <Input
+              type="password"
+              name="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+            />
           </label>
           <Button type="submit" className="full" disabled={loading}>
             {loading ? t('login_loading') : t('login_submit')}

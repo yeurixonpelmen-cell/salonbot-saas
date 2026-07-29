@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { api, clearToken } from './api';
 import { Layout } from './components/Layout';
 import { useAuth } from './context/AuthContext';
 import { LoginPage } from './pages/LoginPage';
@@ -14,8 +16,41 @@ import { FinancePage } from './pages/FinancePage';
 import { SuperAdminPage, SuperLoginPage } from './pages/SuperAdminPage';
 
 function ProtectedRoute() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, refreshAuth } = useAuth();
+  const [checking, setChecking] = useState(isAuthenticated);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setChecking(false);
+      return;
+    }
+    let cancelled = false;
+    setChecking(true);
+    api
+      .get('/api/admin/salon')
+      .then(() => {
+        if (!cancelled) setChecking(false);
+      })
+      .catch(() => {
+        clearToken();
+        refreshAuth();
+        if (!cancelled) setChecking(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, refreshAuth]);
+
   if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (checking) {
+    return (
+      <div className="login-shell">
+        <div className="login-card">
+          <p className="login-sub" style={{ margin: 0 }}>Перевірка сесії…</p>
+        </div>
+      </div>
+    );
+  }
   return <Layout />;
 }
 

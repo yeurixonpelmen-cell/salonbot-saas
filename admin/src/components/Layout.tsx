@@ -118,6 +118,10 @@ export function Layout() {
             <span>{t(item.labelKey)}</span>
           </NavLink>
         ))}
+        <button type="button" onClick={logout} className="logout-button" style={{ border: 0, background: 'transparent' }}>
+          <i><NavIcon name="logout" /></i>
+          <span>{t('nav_logout')}</span>
+        </button>
       </nav>
     </div>
   );

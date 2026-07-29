@@ -1,19 +1,36 @@
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+const ADMIN_TOKEN_KEY = 'admin_token';
+const SESSION_KEYS = [
+  ADMIN_TOKEN_KEY,
+  'onboarding_token',
+  'onboarding_email',
+  'salon_pick_list',
+  'salon_pick_token',
+] as const;
 
 export function getApiUrl(): string {
   return API_URL;
 }
 
+/** Session-only: closing the browser/tab logs out. Password managers can still autofill login. */
 export function getToken(): string | null {
-  return localStorage.getItem('admin_token');
+  // One-time cleanup: old builds kept token in localStorage for days.
+  if (localStorage.getItem(ADMIN_TOKEN_KEY)) {
+    localStorage.removeItem(ADMIN_TOKEN_KEY);
+  }
+  return sessionStorage.getItem(ADMIN_TOKEN_KEY);
 }
 
 export function setToken(token: string): void {
-  localStorage.setItem('admin_token', token);
+  sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
+  localStorage.removeItem(ADMIN_TOKEN_KEY);
 }
 
 export function clearToken(): void {
-  localStorage.removeItem('admin_token');
+  for (const key of SESSION_KEYS) {
+    sessionStorage.removeItem(key);
+    localStorage.removeItem(key);
+  }
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
