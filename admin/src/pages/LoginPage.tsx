@@ -37,13 +37,12 @@ export function LoginPage() {
 
   return (
     <div className="login-shell">
-      <div className="login-card">
-        <div className="brand">
-          <span className="brand-mark">Kelando</span>
-          <div style={{ textAlign: 'left' }}>
-            <small>{t('brand_sub')}</small>
-          </div>
-        </div>
+      <div className="login-stage">
+        <p className="login-brand" aria-label="Kelando">
+          Kelando
+        </p>
+        <p className="login-brand-sub">{t('brand_sub')}</p>
+        <div className="login-card">
         <p className="login-sub">{t('login_sub')}</p>
 
         {error && <div className="notice-error" style={{ textAlign: 'left', marginBottom: 12 }}>{error}</div>}
@@ -105,6 +104,7 @@ export function LoginPage() {
           {t('login_onboarding')}{' '}
           <Link to="/onboarding" className="text-link">{t('login_connect')}</Link>
         </p>
+        </div>
       </div>
     </div>
   );

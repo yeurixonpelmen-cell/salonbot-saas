@@ -288,22 +288,48 @@ html[data-theme='dark'] .view-toggle button.active {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding: 28px 20px 40px;
   background:
-    radial-gradient(900px 420px at 15% 0%, #cdeedf 0%, transparent 55%),
-    radial-gradient(700px 380px at 90% 10%, #d9e7f5 0%, transparent 50%),
-    var(--canvas);
+    radial-gradient(780px 460px at 12% 8%, rgba(180, 220, 200, 0.85) 0%, transparent 58%),
+    radial-gradient(640px 420px at 88% 18%, rgba(160, 205, 185, 0.55) 0%, transparent 52%),
+    linear-gradient(165deg, #cfe8dc 0%, #b9dccb 42%, #a8d0be 100%);
+}
+.login-stage {
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+.login-brand {
+  margin: 0 0 4px;
+  padding-left: 6px;
+  font-family: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  font-size: clamp(2rem, 5vw, 2.65rem);
+  font-weight: 550;
+  font-style: italic;
+  letter-spacing: 0.02em;
+  line-height: 1.05;
+  color: #1a3d32;
+}
+.login-brand-sub {
+  margin: 0 0 22px;
+  padding-left: 8px;
+  color: #4a6b5f;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
 }
 .login-card {
-  width: min(420px, 100%);
-  padding: 32px 28px;
-  border: 1px solid rgba(215, 228, 225, 0.95);
-  border-radius: 24px;
-  background: rgba(255,255,255,.96);
-  box-shadow: 0 28px 70px rgba(16, 48, 44, 0.12);
+  width: 100%;
+  padding: 28px 26px;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 24px 60px rgba(26, 61, 50, 0.14);
   text-align: center;
+  backdrop-filter: blur(8px);
 }
-.login-card .brand { justify-content: center; padding-bottom: 8px; }
 .login-card form { display: grid; gap: 12px; text-align: left; }
 .login-card .ui-button { width: 100%; min-height: 46px; font-size: 14px; }
 .login-card h1 { margin: 0 0 6px; font-size: 26px; }
