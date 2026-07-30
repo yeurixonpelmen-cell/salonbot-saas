@@ -77,9 +77,8 @@ export function Layout() {
     <div className="app-shell">
       <aside className="app-sidebar">
         <div className="brand">
-          <span className="brand-mark" aria-hidden>SB</span>
+          <span className="brand-mark" aria-hidden>Kelando</span>
           <div>
-            SalonBot
             <small>{t('brand_sub')}</small>
           </div>
         </div>

@@ -73,15 +73,17 @@ a { color: inherit; text-decoration: none; }
 .brand-mark, .brand > span {
   display: grid;
   place-items: center;
-  width: 38px;
+  width: 72px;
   height: 38px;
+  padding: 0 8px;
   border-radius: 12px;
-  color: #fff;
-  background: linear-gradient(145deg, #128f84, #0b5f59);
-  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.28);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
+  color: #f4f1ea;
+  background: #0a0a0a;
+  box-shadow: none;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
 }
 .brand small { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0; }
 .desktop-nav { display: grid; gap: 4px; }

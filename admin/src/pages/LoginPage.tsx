@@ -39,9 +39,8 @@ export function LoginPage() {
     <div className="login-shell">
       <div className="login-card">
         <div className="brand">
-          <span className="brand-mark">SB</span>
+          <span className="brand-mark">Kelando</span>
           <div style={{ textAlign: 'left' }}>
-            SalonBot
             <small>{t('brand_sub')}</small>
           </div>
         </div>
