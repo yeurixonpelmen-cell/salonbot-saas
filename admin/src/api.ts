@@ -46,8 +46,18 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, { ...options, headers });
   if (res.status === 401) {
     clearToken();
-    // Onboarding uses claim/complete tokens, not admin JWT — don't force /login redirect.
-    if (!path.startsWith('/api/onboarding/')) {
+    // Don't hard-reload on login/onboarding attempts — caller shows the error in place.
+    // Also skip if already on a login screen (avoids wiping the error message instantly).
+    const isAuthAttempt =
+      path.startsWith('/api/onboarding/') ||
+      path.startsWith('/api/auth/email') ||
+      path.startsWith('/api/auth/telegram') ||
+      path.startsWith('/api/auth/select-salon') ||
+      path.startsWith('/api/super/login');
+    const onLoginScreen =
+      window.location.pathname === '/login' ||
+      window.location.pathname.startsWith('/super/login');
+    if (!isAuthAttempt && !onLoginScreen) {
       window.location.href = '/login';
     }
     const err = await res.json().catch(() => ({ error: 'Unauthorized' }));

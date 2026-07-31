@@ -45,7 +45,11 @@ export function LoginPage() {
         <div className="login-card">
         <p className="login-sub">{t('login_sub')}</p>
 
-        {error && <div className="notice-error" style={{ textAlign: 'left', marginBottom: 12 }}>{error}</div>}
+        {error && (
+          <div className="notice-error" role="alert" style={{ textAlign: 'left', marginBottom: 12 }}>
+            {error}
+          </div>
+        )}
 
         <form
           onSubmit={submitEmail}
